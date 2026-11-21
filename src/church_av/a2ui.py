@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from church_av.models import BoardReading, Fault, Snapshot
 from church_av.path import describe_path
-from church_av.runbook import Runbook
+from church_av.runbook import Runbook, SourceNote
+
+_DIAGRAM_ASK = ("diagram", "signal path", "示意图", "结构图", "流程图", "系统图")
 
 _BOARD_DIAGRAM = {
     "house_mix_clipping",
@@ -40,7 +42,7 @@ def build_messages(
         components.extend(_clear_card())
 
     root_children.extend(["guide", "chat", "scene_heading", "scene_strip"])
-    components.extend(_guide_card(guide, asked, faults))
+    components.extend(_guide_card(guide, asked, faults, snapshot, runbook))
     components.extend(_chat())
     components.append(_text("scene_heading", "Scenes"))
     components.extend(_scene_strip(snapshot, runbook))
@@ -117,7 +119,19 @@ def _scene_strip(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
     return components
 
 
-def _guide_card(reply: str, asked: str, faults: list[Fault]) -> list[dict]:
+def asks_for_setup_diagram(asked: str) -> bool:
+    """A diagram is drawn by this page. The model is not asked to draw it."""
+    text = asked.casefold()
+    return any(marker in text for marker in _DIAGRAM_ASK)
+
+
+def _guide_card(
+    reply: str,
+    asked: str,
+    faults: list[Fault],
+    snapshot: Snapshot,
+    runbook: Runbook,
+) -> list[dict]:
     show_speaker = bool(asked) and any(fault.id == "house_mix_muted" for fault in faults)
     children: list[str] = []
     components: list[dict] = []
@@ -129,6 +143,9 @@ def _guide_card(reply: str, asked: str, faults: list[Fault]) -> list[dict]:
     if asked:
         children.append("guide_asked")
         components.append(_text("guide_asked", f"You asked: {asked}", "caption"))
+    if asks_for_setup_diagram(asked):
+        children.append("setup_diagram")
+        components.append(_setup_diagram(snapshot, runbook))
     children.append("guide_reply")
     if asked:
         shown = reply or "Ask about what you see."
@@ -138,6 +155,123 @@ def _guide_card(reply: str, asked: str, faults: list[Fault]) -> list[dict]:
         shown = "Ask about what you see."
     components.append(_text("guide_reply", shown))
     return [_card("guide", "guide_body"), _column("guide_body", children), *components]
+
+
+def _setup_diagram(snapshot: Snapshot, runbook: Runbook) -> dict:
+    """The path currently in use. Names come from the runbook and the live reading."""
+    scribbles = _scribble_nodes(runbook)
+    mix = _mix_node(runbook)
+    usb = {
+        "title": "X-USB",
+        "detail": "sends Main" if (runbook.usb_source or "main") == "main" else f"sends {runbook.usb_source}",
+    }
+    audio = [stage for stage in (scribbles, [mix], [usb], [_obs_node(snapshot, runbook)], [_youtube_node(snapshot)]) if stage]
+    lanes = [{"name": "Audio", "stages": audio}, {"name": "Picture", "stages": _picture_stages(snapshot, runbook)}]
+    return {
+        "id": "setup_diagram",
+        "component": "SetupDiagram",
+        "lanes": lanes,
+        "aside": _setup_aside(snapshot, runbook),
+    }
+
+
+def _scribble_nodes(runbook: Runbook) -> list[dict]:
+    labels = [item for item in runbook.labels if item.kind == "channel" and item.name.strip()]
+    labels.sort(key=lambda item: item.strip)
+    worship = [item.strip for item in labels if item.name == "Worship"]
+    nodes: list[dict] = []
+    if len(worship) > 1 and worship == list(range(worship[0], worship[-1] + 1)):
+        nodes.append({"title": f"{worship[0]}-{worship[-1]} Worship", "detail": "channels"})
+    else:
+        nodes.extend(
+            {"title": f"{item.strip} {item.name}", "detail": "channel"}
+            for item in labels
+            if item.name == "Worship"
+        )
+    nodes.extend(
+        {"title": f"{item.strip} {item.name}", "detail": "channel"}
+        for item in labels
+        if item.name != "Worship"
+    )
+    return nodes
+
+
+def _mix_node(runbook: Runbook) -> dict:
+    mix = runbook.stream_mix
+    if mix is not None and mix.strip.isdigit():
+        return {"title": f"{mix.kind} {int(mix.strip)}", "detail": "stream mix"}
+    return {"title": "Main L/R", "detail": "house mix"}
+
+
+def _obs_node(snapshot: Snapshot, runbook: Runbook) -> dict:
+    name = runbook.house_mix.obs_name
+    if not snapshot.connected:
+        return {"title": name, "detail": "service PC unread"}
+    house = snapshot.input_named(name)
+    if house is None:
+        return {"title": name, "detail": "missing"}
+    state = "muted" if house.muted else "open"
+    fader = "fader unread" if house.volume_db is None else f"fader {house.volume_db:.0f} dB"
+    if house.meter_db is None or house.meter_db <= -90:
+        meter = "meter quiet"
+    else:
+        meter = f"meter {house.meter_db:.0f} dB"
+    return {"title": name, "detail": f"{state} · {fader} · {meter}"}
+
+
+def _youtube_node(snapshot: Snapshot) -> dict:
+    if not snapshot.connected:
+        detail = "unread"
+    elif snapshot.streaming:
+        detail = "Live"
+    elif snapshot.reconnecting:
+        detail = "reconnecting"
+    else:
+        detail = "stopped"
+    return {"title": "YouTube", "detail": detail}
+
+
+def _picture_stages(snapshot: Snapshot, runbook: Runbook) -> list[list[dict]]:
+    scene = snapshot.program_scene or "No scene"
+    note = runbook.scene_note(snapshot.program_scene)
+    text = f"{scene} {note.picture if note else ''}"
+    sources = [source for source in runbook.sources if source.obs_name and source.obs_name in text]
+    if not sources and "Acer" in text:
+        sources = [source for source in runbook.sources if source.obs_name == "Display Capture"]
+    stages: list[list[dict]] = []
+    if sources:
+        stages.append(
+            [{"title": source.obs_name, "detail": _source_detail(source)} for source in sources]
+        )
+    stages.append([{"title": scene, "detail": note.picture if note else ""}])
+    return stages
+
+
+def _source_detail(source: SourceNote) -> str:
+    audio = source.audio.strip().lower()
+    if "muted" in audio:
+        return "audio muted"
+    if audio in {"none", "no audio"}:
+        return "no audio"
+    return source.audio
+
+
+def _setup_aside(snapshot: Snapshot, runbook: Runbook) -> list[str]:
+    lines: list[str] = []
+    unmapped = [item.role for item in runbook.channels if item.kind == "channel" and not item.strip]
+    if unmapped:
+        lines.append("No strip yet: " + ", ".join(unmapped) + ".")
+    labeled = [item.strip for item in runbook.labels if item.kind == "channel" and item.name.strip()]
+    if labeled and max(labeled) < 32:
+        lines.append(f"Channels {max(labeled) + 1}-32 have no scribble.")
+    mix = runbook.stream_mix
+    if mix is not None and not mix.strip.isdigit():
+        lines.append("No separate stream mix. YouTube uses the house mix.")
+    if snapshot.board is None or not snapshot.board.connected:
+        lines.append("The X32 is not on the network. These names are the scribbles.")
+    if runbook.rack:
+        lines.append("Not monitored: " + ", ".join(item.name for item in runbook.rack) + ".")
+    return lines
 
 
 def _chat() -> list[dict]:

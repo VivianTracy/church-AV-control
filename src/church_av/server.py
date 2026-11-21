@@ -416,6 +416,17 @@ PAGE = r"""<!DOCTYPE html>
   #guide_body { padding: 0.9rem 1rem 1rem; }
   #guide_icon { color: #e06c5a; width: 1.7rem; height: 1.7rem; border: 2px solid #e06c5a; border-radius: 99px; padding: 0.35rem; }
   #guide_reply { margin: 0.25rem 0 0; font-size: 1.05rem; }
+  .setup { display: flex; flex-direction: column; gap: 0.7rem; margin: 0.45rem 0 0.15rem; }
+  .setup-lane { display: flex; flex-direction: column; gap: 0.3rem; }
+  .setup-kicker { color: #b7aa98; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .setup-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+  .setup-stage { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .setup-box { background: #14110f; border: 1px solid #3a332c; border-radius: 8px; padding: 0.35rem 0.55rem; }
+  .setup-box strong { display: block; font-size: 0.92rem; font-weight: 650; }
+  .setup-box span { display: block; color: #b7aa98; font-size: 0.75rem; margin-top: 0.1rem; }
+  .setup-arrow { color: #8d8478; font-size: 1rem; }
+  .setup-aside { margin: 0; padding-left: 1.1rem; color: #d5cbbd; font-size: 0.88rem; }
+  .setup-aside li { margin: 0.15rem 0; }
   #guide_asked { margin: 0; color: #b7aa98; }
   #chat { align-items: end; margin-top: 0.75rem; }
   #question { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; color: #b7aa98;
@@ -644,6 +655,7 @@ function renderNode(id, byId, data) {
     return el;
   }
   if (node.component === "X32Diagram") return x32Diagram(node);
+  if (node.component === "SetupDiagram") return setupDiagram(node);
   if (node.component === "Card") {
     const el = document.createElement("article");
     el.id = id;
@@ -658,6 +670,60 @@ function renderNode(id, byId, data) {
     return el;
   }
   return document.createElement("span");
+}
+
+function setupDiagram(node) {
+  const el = document.createElement("div");
+  el.id = node.id;
+  el.className = "setup";
+  for (const lane of node.lanes || []) {
+    const block = document.createElement("div");
+    block.className = "setup-lane";
+    const kicker = document.createElement("div");
+    kicker.className = "setup-kicker";
+    kicker.textContent = lane.name || "";
+    const flow = document.createElement("div");
+    flow.className = "setup-flow";
+    (lane.stages || []).forEach((stage, index) => {
+      if (index > 0) {
+        const arrow = document.createElement("span");
+        arrow.className = "setup-arrow";
+        arrow.setAttribute("aria-hidden", "true");
+        arrow.textContent = "→";
+        flow.appendChild(arrow);
+      }
+      const group = document.createElement("div");
+      group.className = "setup-stage";
+      for (const item of stage) {
+        const box = document.createElement("div");
+        box.className = "setup-box";
+        const title = document.createElement("strong");
+        title.textContent = item.title || "";
+        box.appendChild(title);
+        if (item.detail) {
+          const detail = document.createElement("span");
+          detail.textContent = item.detail;
+          box.appendChild(detail);
+        }
+        group.appendChild(box);
+      }
+      flow.appendChild(group);
+    });
+    block.append(kicker, flow);
+    el.appendChild(block);
+  }
+  const notes = node.aside || [];
+  if (notes.length) {
+    const aside = document.createElement("ul");
+    aside.className = "setup-aside";
+    for (const line of notes) {
+      const item = document.createElement("li");
+      item.textContent = line;
+      aside.appendChild(item);
+    }
+    el.appendChild(aside);
+  }
+  return el;
 }
 
 function x32Diagram(node) {

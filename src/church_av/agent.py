@@ -15,8 +15,8 @@ You are the church stream booth assistant.
 Answer the question the operator asked.
 The facts in the message are the only live readings and church names you have.
 Do not recite a general checklist unless the operator asked for one.
-Reply in two or three sentences a volunteer can follow from across the room.
 Reply in the language the operator wrote in. An English question gets an English reply. A Chinese question gets a Chinese reply.
+When the operator asks for a diagram, the screen draws the signal path from the runbook and the live reading. Explain that path. Do not draw it as text, and do not invent a channel, a bus, or a connection.
 When no question was asked and you are explaining a detector fault, write the whole reply in Chinese.
 OBS receives one combined X-USB feed, Audio Input Capture. Individual mics are not separate OBS inputs.
 The Behringer X32 may be monitored separately over OSC. Those readings are channel, bus, and output meters.
@@ -301,11 +301,11 @@ def _prompt(question: str | None, snapshot: Snapshot) -> str:
             asked
             + "Answer this question from the facts below. "
             + language
-            + "Reply in two or three sentences and name where to adjust."
+            + "Name where to adjust when the question is about a control."
         )
     return (
         "A detector fault may be open. "
-        "Reply in two or three sentences a volunteer can follow, and name where to adjust. "
+        "Name where to adjust. "
         "Write the whole reply in Chinese."
     )
 
@@ -356,7 +356,7 @@ def _facts(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> str:
 
 
 def _ask_model(api_key: str, prompt: str, facts: str) -> str:
-    """One short model call. No tool round trip and no retry while Flash is busy."""
+    """One model call. No tool round trip and no retry while Flash is busy."""
     from google import genai
     from google.genai import types
 
@@ -372,7 +372,7 @@ def _ask_model(api_key: str, prompt: str, facts: str) -> str:
         contents=f"{prompt}\nFacts: {facts}",
         config=types.GenerateContentConfig(
             system_instruction=INSTRUCTION,
-            max_output_tokens=220,
+            max_output_tokens=800,
             temperature=0.2,
             thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
         ),

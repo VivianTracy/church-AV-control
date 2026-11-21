@@ -56,7 +56,7 @@ The ADJ PC-100A has physical power switches. The amplifiers, wireless receivers,
 One A2UI surface, basic catalog:
 
 - Status, already built: scene, YouTube output, house-mix line, fault cards. When OSC is connected, the house-mix line also shows the mic, stream, USB, and OBS stages.
-- Chat: a `TextField` and an Ask `Button`. The reply is two or three sentences.
+- Chat: a `TextField` and an Ask `Button`. The reply is the model's words, as long as the question needs. A diagram question also draws the signal path in A2UI from the runbook and the live reading. The model does not draw that path.
 - Guide card: the place in large type (`OBS Audio Mixer` or `Behringer X32`), the control name (`Audio Input Capture` or the console name), then the steps. An Apply button is included only when the policy accepted an action and `ALLOW_APPLY` is true.
 
 An unknown board channel becomes a question on that card. The model does not invent a knob name.

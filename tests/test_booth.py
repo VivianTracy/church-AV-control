@@ -162,6 +162,38 @@ def _settings(allow_apply: bool, runbook_path: Path | None = None):
     )
 
 
+def test_a_diagram_question_draws_the_path_and_a_plain_question_does_not():
+    book = load_runbook(ROOT / "runbook" / "church.yaml")
+    reading = snapshot(program_scene="3-Stage 50/Slide 50", streaming=True)
+    asked = "give me a diagram of the AV setup currently in use."
+    surface = build_messages(reading, book, [], allow_apply=False, guide="See the path.", asked=asked)[0]["createSurface"]
+    by_id = {item["id"]: item for item in surface["components"]}
+    diagram = by_id["setup_diagram"]
+    assert diagram["component"] == "SetupDiagram"
+    audio = [box["title"] for stage in diagram["lanes"][0]["stages"] for box in stage]
+    picture = [box["title"] for stage in diagram["lanes"][1]["stages"] for box in stage]
+    assert "1-9 Worship" in audio
+    assert "14 Moderator" in audio
+    assert "15 Reception" in audio
+    assert "Main L/R" in audio
+    assert "X-USB" in audio
+    assert "Audio Input Capture" in audio
+    assert "YouTube" in audio
+    assert "Wall Cam" in picture
+    assert "Slide PC" in picture
+    assert "3-Stage 50/Slide 50" in picture
+    aside = " ".join(diagram["aside"])
+    assert "Pulpit mic" in aside
+    assert "No separate stream mix" in aside
+    assert "not on the network" in aside
+    plain = build_messages(reading, book, [], allow_apply=False, asked="what is the house mix?")
+    plain_ids = {item["id"] for item in plain[0]["createSurface"]["components"]}
+    assert "setup_diagram" not in plain_ids
+    chinese = build_messages(reading, book, [], allow_apply=False, asked="给我一张示意图")
+    chinese_ids = {item["id"] for item in chinese[0]["createSurface"]["components"]}
+    assert "setup_diagram" in chinese_ids
+
+
 def test_the_surface_has_a_chat_field_and_a_guide_card():
     surface = build_messages(snapshot(), runbook(), [], allow_apply=False)[0]["createSurface"]
     by_id = {item["id"]: item for item in surface["components"]}
