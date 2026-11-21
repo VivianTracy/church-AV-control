@@ -86,7 +86,10 @@ class Detector:
                     ),
                     steps=[
                         "In the OBS Audio Mixer, raise Audio Input Capture.",
-                        "If the board meters are already low, raise the board main mix instead.",
+                        runbook.board_instruction(
+                            "main",
+                            "If the board meters are already low, raise {name} on the {board}.",
+                        ),
                     ],
                 )
             )
@@ -108,7 +111,10 @@ class Detector:
                         title="House mix is clipping",
                         evidence=f"The X-USB meter is peaking near full scale ({house.meter_db:.1f} dB).",
                         steps=[
-                            "On the Behringer, lower the main mix a little.",
+                            runbook.board_instruction(
+                                "main",
+                                "On the {board}, lower {name} a little.",
+                            ),
                             "OBS should stay near its current fader. The clip is coming from the board.",
                         ],
                     )
@@ -121,7 +127,10 @@ class Detector:
                         title="House mix is silent",
                         evidence="Audio Input Capture is open, and the X-USB meter has been at the noise floor.",
                         steps=[
-                            "Check that the Behringer USB send is up and the board is not muted.",
+                            runbook.board_instruction(
+                                "main",
+                                "Check that the {board} USB send is up and {name} is not muted.",
+                            ),
                             "In OBS, Audio Input Capture should stay unmuted.",
                         ],
                     )

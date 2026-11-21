@@ -13,6 +13,42 @@ from test_detector import runbook, snapshot
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_board_channels_are_unnamed_until_someone_reads_the_mixer():
+    book = load_runbook(ROOT / "runbook" / "church.yaml")
+    assert book.board_name == "Behringer"
+    assert [item.id for item in book.channels] == ["pulpit", "handheld", "playback", "main"]
+    assert all(item.name == "" for item in book.channels)
+    question = book.board_instruction("main", "Raise {name} on the {board}.")
+    assert question.startswith("What is the Main mix called on the Behringer?")
+    assert "1" not in question
+
+
+def test_a_named_board_channel_is_used_as_written():
+    from church_av.runbook import BoardChannel
+
+    book = runbook(
+        channels=[BoardChannel(id="main", role="Main mix", name="Main L/R")],
+    )
+    step = book.board_instruction("main", "On the {board}, lower {name} a little.")
+    assert step == "On the Behringer, lower Main L/R a little."
+
+
+def test_clipping_asks_which_board_knob():
+    book = load_runbook(ROOT / "runbook" / "church.yaml")
+    loud = snapshot(
+        inputs=[InputReading(name="Audio Input Capture", muted=False, volume_db=-2, meter_db=-0.4)]
+    )
+    detector = Detector()
+    detector.detect(loud, book)
+    faults = detector.detect(loud, book)
+    surface = build_messages(loud, book, faults, allow_apply=False)[0]["createSurface"]
+    by_id = {item["id"]: item for item in surface["components"]}
+    assert by_id["fault_0_place"]["text"] == "Behringer"
+    assert by_id["fault_0_control"]["text"].startswith("What is the Main mix called")
+    assert by_id["fault_0_badge"]["component"] == "Column"
+    assert "fault_0_fader" not in by_id
+
+
 def test_runbook_matches_the_service_machine():
     book = load_runbook(ROOT / "runbook" / "church.yaml")
     assert book.house_mix.obs_name == "Audio Input Capture"

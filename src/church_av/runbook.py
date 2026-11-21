@@ -29,6 +29,17 @@ class SceneNote:
 
 
 @dataclass(frozen=True)
+class BoardChannel:
+    id: str
+    role: str
+    name: str = ""
+
+    @property
+    def known(self) -> bool:
+        return bool(self.name.strip())
+
+
+@dataclass(frozen=True)
 class Runbook:
     church: str
     service_name: str
@@ -36,6 +47,8 @@ class Runbook:
     house_mix: HouseMix
     sources: list[SourceNote] = field(default_factory=list)
     scenes: list[SceneNote] = field(default_factory=list)
+    board_name: str = "Behringer"
+    channels: list[BoardChannel] = field(default_factory=list)
 
     def scene_note(self, name: str | None) -> SceneNote | None:
         if not name:
@@ -50,6 +63,23 @@ class Runbook:
             if source.obs_name == name:
                 return source
         return None
+
+    def channel(self, channel_id: str) -> BoardChannel | None:
+        for item in self.channels:
+            if item.id == channel_id:
+                return item
+        return None
+
+    def board_instruction(self, channel_id: str, named: str) -> str:
+        """Use the knob name from the runbook. An empty name asks instead of guessing."""
+        item = self.channel(channel_id)
+        if item is not None and item.known:
+            return named.format(name=item.name.strip(), board=self.board_name)
+        role = item.role if item is not None else channel_id
+        return (
+            f"What is the {role} called on the {self.board_name}? "
+            "The name is not in the runbook yet."
+        )
 
 
 def load_runbook(path: Path) -> Runbook:
@@ -77,5 +107,14 @@ def load_runbook(path: Path) -> Runbook:
         scenes=[
             SceneNote(name=item["name"], picture=item.get("picture", ""))
             for item in data.get("scenes", [])
+        ],
+        board_name=str((data.get("board") or {}).get("name") or "Behringer"),
+        channels=[
+            BoardChannel(
+                id=item["id"],
+                role=str(item.get("role") or item["id"]),
+                name=str(item.get("name") or "").strip(),
+            )
+            for item in (data.get("board") or {}).get("channels", [])
         ],
     )

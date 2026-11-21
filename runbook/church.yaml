@@ -12,6 +12,24 @@ house_mix:
   target_db: -2
   warn_below_db: -20
 
+# Physical mixer. Leave name empty until it is read off the board.
+# An empty name makes the booth ask. It does not invent a channel number.
+board:
+  name: Behringer
+  channels:
+    - id: pulpit
+      role: Pulpit mic
+      name: ""
+    - id: handheld
+      role: Handheld mic
+      name: ""
+    - id: playback
+      role: Playback
+      name: ""
+    - id: main
+      role: Main mix
+      name: ""
+
 sources:
   - obs_name: Wall Cam
     role: Stage camera, USB capture card

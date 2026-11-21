@@ -78,6 +78,7 @@ def test_instruction_keeps_the_agent_from_driving_the_stream():
     assert "Do not start or stop the stream" in INSTRUCTION
     assert "You cannot change OBS" in INSTRUCTION
     assert "above 0 dB" in INSTRUCTION
+    assert "ask what the knob is called" in INSTRUCTION
 
 
 def test_installed_agent_keeps_the_read_only_tools():

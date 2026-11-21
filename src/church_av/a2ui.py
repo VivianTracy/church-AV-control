@@ -224,6 +224,8 @@ def _fault_card(index: int, fault: Fault, allow_apply: bool) -> list[dict]:
 
 
 def _graphic(fault: Fault) -> tuple[str, str]:
+    if fault.id in {"house_mix_clipping", "house_mix_silent"}:
+        return "badge", "Board"
     if fault.id.startswith("house_mix"):
         return "fader", "X-USB"
     if fault.id == "obs_disconnected":
@@ -232,7 +234,10 @@ def _graphic(fault: Fault) -> tuple[str, str]:
 
 
 def _guide_place(fault: Fault) -> tuple[str, str, str]:
-    if fault.id in {"house_mix_muted", "house_mix_fader_low", "house_mix_clipping", "house_mix_silent"}:
+    if fault.id in {"house_mix_clipping", "house_mix_silent"}:
+        question = fault.steps[0] if fault.steps else "Which knob?"
+        return "Behringer", question, "volumeUp"
+    if fault.id in {"house_mix_muted", "house_mix_fader_low"}:
         icon_name = "volumeMute" if fault.id == "house_mix_muted" else "volumeUp"
         return "OBS Audio Mixer", "Audio Input Capture", icon_name
     if fault.id in {"stream_stopped", "stream_reconnecting", "frames_skipped"}:
