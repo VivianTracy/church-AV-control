@@ -8,11 +8,11 @@ from time import sleep
 from urllib.parse import urlparse
 
 from church_av.agent import Guide, explain, local_reply
-from church_av.a2ui import SURFACE_ID, build_messages
+from church_av.a2ui import SURFACE_ID, SceneHistory, build_messages
 from church_av.config import Settings
 from church_av.detector import Detector
 from church_av.fixtures import FIXTURE_NAMES, load_fixture
-from church_av.models import BoardReading, Fault, Snapshot
+from church_av.models import Action, BoardReading, Fault, Snapshot
 from church_av.obs_read import ObsReader
 from church_av.policy import decide, decide_mapping
 from church_av.runbook import Runbook, load_runbook, write_strip
@@ -41,6 +41,7 @@ class Booth:
         self.chat_guide: Guide | None = None
         self.chat_question = ""
         self.chat_scope = ""
+        self.scenes = SceneHistory()
 
     def tick(self) -> None:
         snapshot = self.reader.read()
@@ -62,6 +63,7 @@ class Booth:
             self.faults = faults
             self.guide = guide
             self._guide_fault_ids = fault_ids
+            self.scenes.note(snapshot.program_scene)
 
     def state(self) -> dict:
         with self._lock:
@@ -71,6 +73,7 @@ class Booth:
             guide, asked = self._chat_for("live")
             if guide is None:
                 guide = self.guide
+            recent = self.scenes.names()
         return {
             "connected": snapshot.connected,
             "programScene": snapshot.program_scene,
@@ -88,6 +91,7 @@ class Booth:
                 self.settings.allow_apply,
                 guide=guide.reply,
                 asked=asked,
+                recent_scenes=recent,
             ),
         }
 
@@ -143,6 +147,8 @@ class Booth:
                 return {"ok": False, "message": str(exc)}
             self.runbook = self.runbook.with_strip(channel_id, strip)
             return {"ok": True, "message": decision.reason}
+        if name == "set_scene":
+            return self._set_scene(str(context.get("sceneName", "")).strip())
         if name == "ask":
             question = str(context.get("question", "")).strip()
             preview = str(context.get("preview", "")).strip()
@@ -183,6 +189,32 @@ class Booth:
             self.last_action = summary
         self.tick()
         return {"ok": True, "message": summary}
+
+    def _set_scene(self, scene_name: str) -> dict:
+        """A click on a scene chip is the operator confirming that scene."""
+        with self._lock:
+            snapshot = self.snapshot
+        if scene_name and scene_name == snapshot.program_scene:
+            return {"ok": True, "message": f"{scene_name} is already on screen."}
+        decision = decide(
+            Action(
+                kind="set_program_scene",
+                summary=f"Switch the program scene to {scene_name}",
+                scene_name=scene_name,
+            ),
+            snapshot,
+            self.runbook,
+            confirmed=True,
+        )
+        if not decision.allowed or decision.action is None or decision.action.scene_name is None:
+            return {"ok": False, "message": decision.reason}
+        try:
+            self.reader.set_program_scene(decision.action.scene_name)
+        except Exception as exc:
+            message_text = str(exc).strip() or exc.__class__.__name__
+            return {"ok": False, "message": message_text}
+        self.tick()
+        return {"ok": True, "message": decision.reason}
 
     def _apply(self, fault: Fault, snapshot: Snapshot) -> str:
         decision = decide(fault.action, snapshot, self.runbook, confirmed=True)
@@ -439,25 +471,49 @@ PAGE = r"""<!DOCTYPE html>
   #guide_icon { color: var(--bad); width: 1.35rem; height: 1.35rem; }
   #guide_reply { margin: 0.15rem 0 0; font-size: 1.05rem; line-height: 1.5; }
   .setup { display: flex; flex-direction: column; gap: 0.85rem; margin: 0.85rem 0 0; }
-  .setup-lane { display: flex; flex-direction: column; gap: 0.4rem; }
-  .setup-kicker { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; }
-  .setup-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
-  .setup-stage { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  button.setup-box { font: inherit; text-align: left; color: var(--text); background: var(--inset);
-                      border: 1px solid var(--line); border-radius: 10px; padding: 0.45rem 0.65rem; margin: 0; cursor: pointer; }
-  button.setup-box.is-selected { border-color: var(--text); background: #1c1f26; }
-  button.setup-box strong { display: block; font-size: 0.92rem; font-weight: 600; }
-  button.setup-box .kicker { display: block; color: var(--muted); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; }
-  button.setup-box .status { display: block; font-size: 1.15rem; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; margin-top: 0.1rem; }
-  button.setup-box[data-state="ok"] .status { color: var(--ok); }
-  button.setup-box[data-state="bad"] .status { color: var(--bad); }
-  button.setup-box[data-state="off"] .status { color: var(--muted); }
-  button.setup-box span { display: block; color: var(--muted); font-size: 0.75rem; margin-top: 0.1rem; }
-  .level { display: block; height: 0.35rem; margin-top: 0.4rem; background: #2a2e36; border-radius: 99px; overflow: hidden; }
-  .level b { display: block; height: 100%; background: var(--ok); }
-  .level b.hot { background: var(--warn); }
+  .setup-columns { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 0.75rem; align-items: stretch; }
+  .preview-column, .audio-column { background: var(--inset); border: 1px solid var(--line); border-radius: 16px; padding: 0.85rem 0.9rem 0.95rem; min-width: 0; }
+  .audio-column { display: flex; flex-direction: column; }
+  .panel-title { margin: 0 0 0.7rem; font-size: 1rem; font-weight: 650; letter-spacing: -0.02em; text-transform: none; }
+  .preview-frame { position: relative; display: flex; aspect-ratio: 16 / 9; background: #07080b; border-radius: 12px; overflow: hidden; }
+  .preview-source { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 0.15rem;
+                    padding: 0.7rem; margin: 0; border: 0; border-right: 1px solid #000; border-radius: 0; background: #1a2330;
+                    color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+  .preview-source:last-of-type { border-right: 0; }
+  .preview-source.is-selected { outline: 2px solid var(--text); outline-offset: -2px; }
+  .preview-source strong { font-size: 0.95rem; }
+  .preview-source span { color: #c5ccd6; font-size: 0.75rem; }
+  .preview-badge { position: absolute; top: 0.55rem; right: 0.55rem; max-width: 70%; padding: 0.18rem 0.65rem;
+                   background: rgba(16, 18, 24, 0.86); border-radius: 999px; font-size: 0.78rem; white-space: nowrap;
+                   overflow: hidden; text-overflow: ellipsis; }
+  .preview-caption { margin: 0.55rem 0 0.75rem; color: var(--muted); font-size: 0.88rem; }
+  .scene-dock #scene_heading { margin: 0 0 0.45rem; }
+  .scene-dock #scene_strip { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .scene-dock #scene_strip button { width: auto; margin: 0; background: #1a1d24; color: var(--text);
+                                    border: 1px solid var(--line); border-radius: 999px; padding: 0.4rem 0.85rem; cursor: pointer; }
+  .scene-dock #scene_strip #scene_current { background: #14663d; border-color: #1f8a52; color: #fff; font-weight: 650; }
+  .scene-dock .swatch { display: none; }
+  .path-row { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 0.22rem; }
+  button.path-node { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; margin: 0; padding: 0.5rem 0.28rem 0.45rem;
+                      border-radius: 12px; border: 1px solid #2a2e36; background: #1a1d24; color: var(--text);
+                      text-align: center; cursor: pointer; font: inherit; }
+  button.path-node.is-selected { border-color: var(--text); }
+  button.path-node .path-dot { display: block; width: 0.48rem; height: 0.48rem; margin: 0 auto 0.28rem; border-radius: 99px; background: #6b7280; }
+  button.path-node[data-state="ok"] .path-dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(61, 214, 140, 0.22); }
+  button.path-node[data-state="bad"] .path-dot { background: var(--bad); box-shadow: 0 0 0 3px rgba(240, 113, 103, 0.22); }
+  button.path-node strong { display: block; font-size: 0.72rem; font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+  button.path-node .status { display: block; margin-top: 0.12rem; font-size: 0.7rem; color: var(--muted); overflow-wrap: anywhere; }
+  button.path-node[data-state="ok"] .status { color: var(--ok); }
+  button.path-node[data-state="bad"] .status { color: var(--bad); }
+  button.path-node .reading { display: block; margin-top: 0.08rem; font-size: 0.66rem; color: #8b939e; overflow-wrap: anywhere; }
+  .setup-arrow { flex: 0 0 auto; align-self: center; color: #5c6370; font-size: 0.9rem; }
+  .meter-row { display: flex; align-items: center; gap: 0.7rem; margin-top: auto; padding-top: 0.9rem; }
+  .meter-row p { margin: 0; color: var(--muted); font-size: 0.82rem; white-space: nowrap; }
+  .segments { display: flex; gap: 3px; flex: 1; height: 0.8rem; min-width: 0; }
+  .segments i { flex: 1; background: #2a2e36; border-radius: 2px; }
+  .segments i.lit { background: var(--ok); }
+  .segments i.hot { background: var(--warn); }
   .setup-detail { margin: 0; padding: 0.75rem 0.85rem; background: var(--inset); border-radius: 10px; color: var(--text); font-size: 0.95rem; }
-  .setup-arrow { color: #5c6370; font-size: 0.95rem; }
   .setup-aside { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.88rem; }
   .setup-aside li { margin: 0.2rem 0; }
   #guide_asked { margin: 0; color: var(--muted); }
@@ -479,7 +535,9 @@ PAGE = r"""<!DOCTYPE html>
   pre { white-space: pre-wrap; }
   @media (max-width: 720px) {
     main { padding: 1.15rem 0.85rem 3rem; }
-    #status { grid-template-columns: 1fr; }
+    .setup-columns { grid-template-columns: 1fr; }
+    .path-row { flex-wrap: wrap; }
+    button.path-node { flex: 1 1 5.2rem; min-width: 5.2rem; }
     article[id^="fault_"] > .row,
     article[id^="fault_"] > .column { flex-direction: column; }
     .mixer, .badge { width: auto; flex-basis: auto; flex-direction: row; justify-content: flex-start;
@@ -724,7 +782,7 @@ function setupNotes(node) {
 }
 
 function paintSelection(notes) {
-  document.querySelectorAll("button.setup-box").forEach((box) => {
+  document.querySelectorAll("button.preview-source, button.path-node").forEach((box) => {
     box.classList.toggle("is-selected", box.dataset.boxId === selectedBox);
   });
   const detail = document.getElementById("setup_detail");
@@ -732,21 +790,154 @@ function paintSelection(notes) {
   detail.textContent = notes[selectedBox] || "Select a box to read that step.";
 }
 
-function levelMeter(data) {
-  const bar = document.createElement("i");
-  bar.className = "level";
+function laneItems(lane) {
+  const items = [];
+  for (const stage of (lane && lane.stages) || []) {
+    for (const item of stage) items.push(item);
+  }
+  return items;
+}
+
+function bindBox(box, item, notes) {
+  box.type = "button";
+  box.dataset.boxId = item.id || "";
+  if (item.id && item.id === selectedBox) box.classList.add("is-selected");
+  if (item.state) box.dataset.state = item.state;
+  box.addEventListener("click", () => {
+    selectedBox = selectedBox === item.id ? "" : item.id;
+    paintSelection(notes);
+  });
+}
+
+function segmentMeter(data) {
+  const wrap = document.createElement("div");
+  wrap.className = "segments";
+  const count = 28;
   const db = data ? data.meterDb : null;
   const muted = Boolean(data && data.muted);
-  let fraction = 0;
+  let lit = 0;
   if (!muted && typeof db === "number" && db > -90) {
     const clamped = Math.max(-60, Math.min(0, db));
-    fraction = (clamped + 60) / 60;
+    lit = Math.round(((clamped + 60) / 60) * count);
   }
-  const fill = document.createElement("b");
-  fill.style.width = (fraction * 100) + "%";
-  if (fraction > 0.85) fill.className = "hot";
-  bar.appendChild(fill);
-  return bar;
+  for (let i = 0; i < count; i += 1) {
+    const seg = document.createElement("i");
+    if (i < lit) seg.className = i >= count - 3 ? "hot" : "lit";
+    wrap.appendChild(seg);
+  }
+  return wrap;
+}
+
+function meterText(data) {
+  const db = data ? data.meterDb : null;
+  if (data && data.muted) return "mute";
+  if (typeof db === "number" && db > -90) return Math.round(db) + " dB";
+  return "quiet";
+}
+
+function previewColumn(lane, notes) {
+  const card = document.createElement("section");
+  card.className = "preview-column";
+  const items = laneItems(lane);
+  const scene = items.find((item) => item.id === "scene");
+  const sources = items.filter((item) => item.id !== "scene");
+  const title = document.createElement("h2");
+  title.className = "panel-title";
+  title.textContent = (scene && scene.kicker) || (lane && lane.name) || "Picture";
+  const frame = document.createElement("div");
+  frame.className = "preview-frame";
+  const shown = sources.length ? sources : [{id: "scene-empty", title: scene ? scene.title : "No scene", detail: ""}];
+  for (const item of shown) {
+    const region = document.createElement("button");
+    region.className = "preview-source";
+    bindBox(region, item.id === "scene-empty" ? (scene || item) : item, notes);
+    const name = document.createElement("strong");
+    name.textContent = item.title || "";
+    region.appendChild(name);
+    if (item.detail) {
+      const reading = document.createElement("span");
+      reading.textContent = item.detail;
+      region.appendChild(reading);
+    }
+    frame.appendChild(region);
+  }
+  if (scene) {
+    const badge = document.createElement("div");
+    badge.className = "preview-badge";
+    badge.textContent = scene.title || "";
+    frame.appendChild(badge);
+  }
+  card.append(title, frame);
+  if (scene && scene.detail) {
+    const caption = document.createElement("p");
+    caption.className = "preview-caption";
+    caption.textContent = scene.detail;
+    card.appendChild(caption);
+  }
+  const dock = document.createElement("div");
+  dock.className = "scene-dock";
+  card.appendChild(dock);
+  return card;
+}
+
+function pathNode(item, notes) {
+  const box = document.createElement("button");
+  box.className = "path-node";
+  bindBox(box, item, notes);
+  const dot = document.createElement("i");
+  dot.className = "path-dot";
+  const title = document.createElement("strong");
+  title.textContent = item.title || "";
+  box.append(dot, title);
+  if (item.status) {
+    const status = document.createElement("span");
+    status.className = "status";
+    status.textContent = item.status;
+    box.appendChild(status);
+  }
+  if (item.detail) {
+    const reading = document.createElement("span");
+    reading.className = "reading";
+    reading.textContent = item.detail;
+    box.appendChild(reading);
+  }
+  return box;
+}
+
+function audioColumn(lane, data, notes) {
+  const card = document.createElement("section");
+  card.className = "audio-column";
+  const title = document.createElement("h2");
+  title.className = "panel-title";
+  title.textContent = (lane && lane.name) || "Audio";
+  const row = document.createElement("div");
+  row.className = "path-row";
+  let meter = false;
+  (lane && lane.stages || []).forEach((stage, index) => {
+    if (index > 0) {
+      const arrow = document.createElement("span");
+      arrow.className = "setup-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "→";
+      row.appendChild(arrow);
+    }
+    for (const item of stage) {
+      if (item.meter) meter = true;
+      row.appendChild(pathNode(item, notes));
+    }
+  });
+  card.append(title, row);
+  if (meter) {
+    const line = document.createElement("div");
+    line.className = "meter-row";
+    const label = document.createElement("p");
+    label.textContent = "X-USB meter";
+    const value = document.createElement("p");
+    value.textContent = meterText(data);
+    line.append(label, segmentMeter(data), value);
+    card.appendChild(line);
+  }
+  return card;
 }
 
 function setupDiagram(node, data) {
@@ -755,63 +946,13 @@ function setupDiagram(node, data) {
   const el = document.createElement("div");
   el.id = node.id;
   el.className = "setup";
-  for (const lane of node.lanes || []) {
-    const block = document.createElement("div");
-    block.className = "setup-lane";
-    const kicker = document.createElement("div");
-    kicker.className = "setup-kicker";
-    kicker.textContent = lane.name || "";
-    const flow = document.createElement("div");
-    flow.className = "setup-flow";
-    (lane.stages || []).forEach((stage, index) => {
-      if (index > 0) {
-        const arrow = document.createElement("span");
-        arrow.className = "setup-arrow";
-        arrow.setAttribute("aria-hidden", "true");
-        arrow.textContent = "→";
-        flow.appendChild(arrow);
-      }
-      const group = document.createElement("div");
-      group.className = "setup-stage";
-      for (const item of stage) {
-        const box = document.createElement("button");
-        box.type = "button";
-        box.className = "setup-box";
-        box.dataset.boxId = item.id || "";
-        if (item.id && item.id === selectedBox) box.classList.add("is-selected");
-        if (item.state) box.dataset.state = item.state;
-        if (item.kicker) {
-          const kicker = document.createElement("span");
-          kicker.className = "kicker";
-          kicker.textContent = item.kicker;
-          box.appendChild(kicker);
-        }
-        const title = document.createElement("strong");
-        title.textContent = item.title || "";
-        box.appendChild(title);
-        if (item.status) {
-          const status = document.createElement("span");
-          status.className = "status";
-          status.textContent = item.status;
-          box.appendChild(status);
-        }
-        if (item.detail) {
-          const reading = document.createElement("span");
-          reading.textContent = item.detail;
-          box.appendChild(reading);
-        }
-        if (item.meter) box.appendChild(levelMeter(data));
-        box.addEventListener("click", () => {
-          selectedBox = selectedBox === item.id ? "" : item.id;
-          paintSelection(notes);
-        });
-        group.appendChild(box);
-      }
-      flow.appendChild(group);
-    });
-    block.append(kicker, flow);
-    el.appendChild(block);
-  }
+  const columns = document.createElement("div");
+  columns.className = "setup-columns";
+  const lanes = node.lanes || [];
+  const picture = lanes.find((lane) => lane.name === "Picture") || lanes[1];
+  const audio = lanes.find((lane) => lane.name === "Audio") || lanes[0];
+  columns.append(previewColumn(picture, notes), audioColumn(audio, data, notes));
+  el.appendChild(columns);
   const detail = document.createElement("p");
   detail.id = "setup_detail";
   detail.className = "setup-detail";
@@ -883,6 +1024,13 @@ function render(messages) {
   screen.replaceChildren();
   if (!byId.root) return;
   screen.appendChild(renderNode("root", byId, surface.dataModel || {}));
+  const dock = document.querySelector(".scene-dock");
+  const heading = document.getElementById("scene_heading");
+  const strip = document.getElementById("scene_strip");
+  if (dock && strip) {
+    if (heading) dock.appendChild(heading);
+    dock.appendChild(strip);
+  }
   restoreDraft();
 }
 
