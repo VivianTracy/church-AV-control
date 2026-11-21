@@ -26,6 +26,7 @@ def build_messages(
     allow_apply: bool,
     guide: str = "",
     asked: str = "",
+    prompts: list[str] | None = None,
 ) -> list[dict]:
     components: list[dict] = []
     root_children = ["title", "path_card"]
@@ -44,7 +45,7 @@ def build_messages(
 
     root_children.extend(["guide", "chat", "scene_heading", "scene_strip"])
     components.extend(_guide_card(guide, asked, faults))
-    components.extend(_chat())
+    components.extend(_chat(prompts))
     components.append(_text("scene_heading", "Scenes"))
     components.extend(_scene_strip(snapshot))
 
@@ -313,9 +314,10 @@ def _setup_aside(snapshot: Snapshot, runbook: Runbook) -> list[str]:
     return lines
 
 
-def _chat() -> list[dict]:
-    return [
-        _row("chat", ["question", "ask"]),
+def _chat(prompts: list[str] | None = None) -> list[dict]:
+    asked = [item.strip() for item in (prompts or []) if item.strip()][:3]
+    children = ["chat_row"]
+    components: list[dict] = [
         {
             "id": "question",
             "component": "TextField",
@@ -331,7 +333,24 @@ def _chat() -> list[dict]:
             "variant": "primary",
             "action": {"event": {"name": "ask", "context": {}}},
         },
+        _row("chat_row", ["question", "ask"]),
     ]
+    if asked:
+        children.append("prompts")
+        ids = [f"prompt_{index}" for index in range(len(asked))]
+        components.append(_row("prompts", ids))
+        for index, text in enumerate(asked):
+            components.append(_text(f"prompt_{index}_label", text))
+            components.append(
+                {
+                    "id": f"prompt_{index}",
+                    "component": "Button",
+                    "child": f"prompt_{index}_label",
+                    "action": {"event": {"name": "ask", "context": {"question": text}}},
+                }
+            )
+    components.insert(0, _column("chat", children))
+    return components
 
 
 def _clear_card() -> list[dict]:

@@ -311,3 +311,26 @@ def test_the_scene_chip_is_only_the_scene_on_screen_and_explains_the_obs_click()
     assert by_id["scene_current"]["action"]["event"]["context"]["note"] == SCENE_HELP
     assert "set_scene" not in json.dumps(surface)
     assert "1-Stage Only" not in json.dumps(by_id["scene_strip"])
+
+
+def test_a_reload_clears_the_question_and_the_log_prompts_common_ones(tmp_path):
+    from church_av.questions import QuestionLog
+
+    log = QuestionLog(tmp_path / "questions.jsonl")
+    booth = Booth(_settings(False), FakeReader(), runbook(), question_log=log)
+    booth.tick()
+    for question in ("Why is it quiet?", "why is it quiet?", "Is YouTube live?"):
+        result = booth.handle_action(
+            {"version": "1.0", "action": {"name": "ask", "context": {"question": question}}}
+        )
+        assert result["ok"] is True
+    shown = json.dumps(booth.state()["a2ui"])
+    assert "You asked: Is YouTube live?" in shown
+    booth.clear_chat()
+    cleared = {item["id"]: item for item in booth.state()["a2ui"][0]["createSurface"]["components"]}
+    assert "guide_asked" not in cleared
+    assert cleared["prompt_0_label"]["text"] == "Why is it quiet?"
+    assert cleared["prompt_1_label"]["text"] == "Is YouTube live?"
+    assert cleared["prompt_0"]["action"]["event"]["context"]["question"] == "Why is it quiet?"
+    assert log.frequent() == ["Why is it quiet?", "Is YouTube live?"]
+    assert "Why is it quiet?" in (tmp_path / "questions.jsonl").read_text(encoding="utf-8")

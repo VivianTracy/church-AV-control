@@ -95,6 +95,7 @@ def explain(
     question: str | None = None,
     api_key: str = "",
     completer=None,
+    prompts: list[str] | None = None,
 ) -> Guide:
     """Explain the reading. Without an API key, or if the model call fails, use the detector text."""
     local = local_reply(snapshot, runbook, faults, question)
@@ -103,9 +104,9 @@ def explain(
     tools = build_tools(snapshot, runbook, faults)
     try:
         if completer is not None:
-            reply = completer(_prompt(question, snapshot), tools)
+            reply = completer(_prompt(question, snapshot, prompts), tools)
         else:
-            reply = _ask_model(api_key, _prompt(question, snapshot), _facts(snapshot, runbook, faults))
+            reply = _ask_model(api_key, _prompt(question, snapshot, prompts), _facts(snapshot, runbook, faults))
     except Exception:
         if question:
             return Guide(_could_not_answer(question, snapshot), "detector")
@@ -286,7 +287,14 @@ def _health_check(snapshot: Snapshot, runbook: Runbook, chinese: bool = False) -
     )
 
 
-def _prompt(question: str | None, snapshot: Snapshot) -> str:
+def _prompt(question: str | None, snapshot: Snapshot, prompts: list[str] | None = None) -> str:
+    often = ""
+    if prompts:
+        often = (
+            "Operators most often ask: "
+            + "; ".join(prompts)
+            + ". Mention one of these only when it helps. Do not invent other frequent questions. "
+        )
     if question:
         asked = "The operator asked: " + question.strip() + " "
         language = "Reply in the language of the question. An English question gets an English reply. A Chinese question gets a Chinese reply. "
@@ -295,11 +303,13 @@ def _prompt(question: str | None, snapshot: Snapshot) -> str:
                 asked
                 + "Answer this question from the facts below. The live OBS reading is unavailable, so say that in one sentence and do not invent a scene or a meter. "
                 + "Do not reply with a general pre-stream checklist unless they asked for one. "
+                + often
                 + language
             )
         return (
             asked
             + "Answer this question from the facts below. "
+            + often
             + language
             + "Name where to adjust when the question is about a control."
         )

@@ -5,7 +5,7 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Lock, Thread
 from time import sleep
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from church_av.agent import Guide, explain, local_reply
 from church_av.a2ui import SURFACE_ID, build_messages
@@ -15,6 +15,7 @@ from church_av.fixtures import FIXTURE_NAMES, load_fixture
 from church_av.models import BoardReading, Fault, Snapshot
 from church_av.obs_read import ObsReader
 from church_av.policy import decide, decide_mapping
+from church_av.questions import QuestionLog
 from church_av.runbook import Runbook, load_runbook, write_strip
 from church_av.x32_read import X32Reader
 
@@ -26,6 +27,7 @@ class Booth:
         reader: ObsReader,
         runbook: Runbook,
         board_reader: X32Reader | None = None,
+        question_log: QuestionLog | None = None,
     ) -> None:
         self.settings = settings
         self.reader = reader
@@ -41,6 +43,7 @@ class Booth:
         self.chat_guide: Guide | None = None
         self.chat_question = ""
         self.chat_scope = ""
+        self.questions = question_log or QuestionLog(settings.root / "logs" / "questions.jsonl")
 
     def tick(self) -> None:
         snapshot = self.reader.read()
@@ -71,6 +74,7 @@ class Booth:
             guide, asked = self._chat_for("live")
             if guide is None:
                 guide = self.guide
+        prompts = self.questions.frequent()
         return {
             "connected": snapshot.connected,
             "programScene": snapshot.program_scene,
@@ -88,8 +92,16 @@ class Booth:
                 self.settings.allow_apply,
                 guide=guide.reply,
                 asked=asked,
+                prompts=prompts,
             ),
         }
+
+    def clear_chat(self) -> None:
+        """Drop the question on screen. The answer stays in the question log."""
+        with self._lock:
+            self.chat_guide = None
+            self.chat_question = ""
+            self.chat_scope = ""
 
     def ask(self, question: str, preview: str = "") -> Guide:
         """Answer one operator question. A preview name reads a saved snapshot, not OBS."""
@@ -104,17 +116,21 @@ class Booth:
                 snapshot = self.snapshot
                 faults = list(self.faults)
             scope = "live"
+        prompts = [] if preview else self.questions.frequent()
         guide = explain(
             snapshot,
             self.runbook,
             faults,
             question=question,
             api_key=self.settings.google_api_key,
+            prompts=prompts,
         )
         with self._lock:
             self.chat_guide = guide
             self.chat_question = question
             self.chat_scope = scope
+        if scope == "live":
+            self.questions.append(question, guide.reply)
         return guide
 
     def _chat_for(self, scope: str) -> tuple[Guide | None, str]:
@@ -237,6 +253,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._bytes(200, "text/html; charset=utf-8", PAGE.encode())
             return
         if path == "/api/state":
+            if parse_qs(urlparse(self.path).query).get("fresh") == ["1"]:
+                self.booth.clear_chat()
             self._bytes(200, "application/json", json.dumps(self.booth.state()).encode())
             return
         if path == "/api/a2ui":
@@ -332,6 +350,7 @@ def _preview_state(booth: Booth, name: str) -> dict:
             allow_apply=False,
             guide=guide.reply,
             asked=asked,
+            prompts=booth.questions.frequent(),
         ),
     }
 
@@ -480,8 +499,11 @@ PAGE = r"""<!DOCTYPE html>
   .setup-aside { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.88rem; }
   .setup-aside li { margin: 0.2rem 0; }
   #guide_asked { margin: 0; color: var(--muted); }
-  #chat { align-items: end; gap: 0.6rem; background: #14663d; border: 1px solid #1f8a52;
+  #chat { align-items: stretch; flex-direction: column; gap: 0.7rem; background: #14663d; border: 1px solid #1f8a52;
           border-radius: 16px; padding: 1rem 1.15rem 1.1rem; }
+  #chat_row { display: flex; gap: 0.6rem; align-items: end; }
+  #prompts { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  #prompts button { background: #fff; color: #14663d; border-radius: 999px; text-align: left; }
   #question { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; color: #fff;
               font-size: 1.2rem; font-weight: 650; letter-spacing: -0.02em; text-transform: none; }
   #question input { font: 16px/1.4 ui-sans-serif, system-ui, sans-serif; text-transform: none;
@@ -508,7 +530,7 @@ PAGE = r"""<!DOCTYPE html>
     .mixer, .badge { width: auto; flex-basis: auto; flex-direction: row; justify-content: flex-start;
                      border-radius: 16px 16px 0 0; }
     .mixer .track { height: 4.5rem; }
-    #chat { flex-direction: column; align-items: stretch; }
+    #chat_row { flex-direction: column; align-items: stretch; }
   }
 </style>
 </head>
@@ -660,6 +682,7 @@ function renderNode(id, byId, data) {
     field.textContent = node.label || "Ask";
     const input = document.createElement("input");
     input.type = node.textFieldType === "obscured" ? "password" : "text";
+    input.autocomplete = "off";
     input.value = drafts.question || node.text || "";
     input.placeholder = "What should I adjust?";
     input.addEventListener("input", () => { drafts.question = input.value; });
@@ -990,8 +1013,10 @@ async function sendAction(component, sourceId) {
   }
   const context = Object.assign({}, event.context || {});
   if (event.name === "ask") {
-    const field = questionInput();
-    context.question = field ? field.value : "";
+    if (!context.question) {
+      const field = questionInput();
+      context.question = field ? field.value : "";
+    }
     if (preview) context.preview = preview;
     const askButton = document.getElementById("ask");
     if (askButton) askButton.textContent = "Asking…";
@@ -1016,8 +1041,15 @@ async function sendAction(component, sourceId) {
   refresh();
 }
 
+let pageOpened = false;
+
 async function refresh() {
-  const url = preview ? "/api/preview/" + preview : "/api/state";
+  let url = preview ? "/api/preview/" + preview : "/api/state";
+  if (!preview && !pageOpened) {
+    url += "?fresh=1";
+    pageOpened = true;
+    drafts.question = "";
+  }
   const response = await fetch(url, {cache: "no-store"});
   const state = await response.json();
   document.getElementById("raw").textContent = JSON.stringify(state.a2ui, null, 2);
