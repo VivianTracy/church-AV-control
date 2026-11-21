@@ -47,7 +47,7 @@ class Runbook:
     house_mix: HouseMix
     sources: list[SourceNote] = field(default_factory=list)
     scenes: list[SceneNote] = field(default_factory=list)
-    board_name: str = "Behringer"
+    board_name: str = "Behringer X32"
     channels: list[BoardChannel] = field(default_factory=list)
 
     def scene_note(self, name: str | None) -> SceneNote | None:
@@ -108,7 +108,7 @@ def load_runbook(path: Path) -> Runbook:
             SceneNote(name=item["name"], picture=item.get("picture", ""))
             for item in data.get("scenes", [])
         ],
-        board_name=str((data.get("board") or {}).get("name") or "Behringer"),
+        board_name=str((data.get("board") or {}).get("name") or "Behringer X32"),
         channels=[
             BoardChannel(
                 id=item["id"],

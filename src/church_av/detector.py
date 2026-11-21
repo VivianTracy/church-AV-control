@@ -45,7 +45,7 @@ class Detector:
                     id="house_mix_missing",
                     severity="critical",
                     title=f"OBS has no input named {mix.obs_name}",
-                    evidence="The runbook expects the Behringer USB mix under that name.",
+                    evidence="The runbook expects the Behringer X32 USB mix under that name.",
                     steps=[
                         "In OBS Sources, find the input that is Microphone (X-USB).",
                         f"Rename it to {mix.obs_name}, or update runbook/church.yaml.",

@@ -10,7 +10,7 @@ OBS WebSocket on the service PC (`10.1.10.167:4455`) reports:
 - whether the YouTube output is live
 - the one house-mix input, `Audio Input Capture`, which Windows calls Microphone (X-USB)
 
-That device is the Behringer mix. Individual mics are not separate OBS inputs. Wall Cam, Mobile Cam, and Slide PC stay muted on purpose.
+That device is the Behringer X32 mix. Individual mics are not separate OBS inputs. Wall Cam, Mobile Cam, and Slide PC stay muted on purpose.
 
 The physical channel labels live under `board` in `runbook/church.yaml`. Leave `name` empty until someone reads it off the mixer. The booth then asks which knob, and does not invent a number.
 

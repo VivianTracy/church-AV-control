@@ -7,7 +7,7 @@ def runbook(**overrides) -> Runbook:
     mix = HouseMix(
         obs_name="Audio Input Capture",
         windows_device="Microphone (X-USB)",
-        role="Behringer USB mix",
+        role="Behringer X32 USB mix",
         target_db=-2,
         warn_below_db=-20,
     )

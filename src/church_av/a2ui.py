@@ -236,7 +236,7 @@ def _graphic(fault: Fault) -> tuple[str, str]:
 def _guide_place(fault: Fault) -> tuple[str, str, str]:
     if fault.id in {"house_mix_clipping", "house_mix_silent"}:
         question = fault.steps[0] if fault.steps else "Which knob?"
-        return "Behringer", question, "volumeUp"
+        return "Behringer X32", question, "volumeUp"
     if fault.id in {"house_mix_muted", "house_mix_fader_low"}:
         icon_name = "volumeMute" if fault.id == "house_mix_muted" else "volumeUp"
         return "OBS Audio Mixer", "Audio Input Capture", icon_name

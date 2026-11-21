@@ -7,7 +7,7 @@ house_mix:
   obs_name: Audio Input Capture
   windows_device: Microphone (X-USB)
   role: >
-    Behringer mixer USB output. Pulpit, handheld, and playback are mixed
+    Behringer X32 mixer USB output. Pulpit, handheld, and playback are mixed
     on the board before they reach OBS, so this is one fader, not one mic.
   target_db: -2
   warn_below_db: -20
@@ -15,7 +15,7 @@ house_mix:
 # Physical mixer. Leave name empty until it is read off the board.
 # An empty name makes the booth ask. It does not invent a channel number.
 board:
-  name: Behringer
+  name: Behringer X32
   channels:
     - id: pulpit
       role: Pulpit mic

@@ -13,7 +13,7 @@ You are the church stream booth assistant.
 Use get_snapshot, get_runbook, and list_open_faults before you answer.
 Reply in two or three sentences a volunteer can follow from across the room.
 Name the OBS control, such as the Audio Mixer speaker for Audio Input Capture,
-or the Behringer channel when the runbook names it.
+or the Behringer X32 channel when the runbook names it.
 Do not invent a board channel name.
 If a board channel name is empty, ask what the knob is called.
 Do not start or stop the stream, and do not click Go Live.
@@ -147,7 +147,7 @@ def _health_check(snapshot: Snapshot, runbook: Runbook) -> str:
         f"{where}Before Start Streaming, confirm OBS is open and the WebSocket server is enabled. "
         f"In the Audio Mixer, {mix.obs_name} stays unmuted with the fader near {mix.target_db:.0f} dB, "
         f"and {muted_text} stay muted. "
-        "On the Behringer, bring up the main mix and the mics you need. "
+        "On the Behringer X32, bring up the main mix and the mics you need. "
         "Those channel names are not written down yet, so read the labels on the board. "
         "Start the stream on the service PC. This booth will not start it."
     )

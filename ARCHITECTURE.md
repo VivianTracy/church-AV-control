@@ -17,7 +17,7 @@ A policy module is the only writer. The agent may name an action. The policy dro
 | Unmute Audio Input Capture | OBS Audio Mixer | House mix only. Camera inputs stay muted. |
 | Nudge the house-mix fader | OBS Audio Mixer | At most 3 dB per tap, never above 0 dB, never a mute. |
 | Change the program scene | OBS Scenes | Only after a chat confirmation, and only to a scene name OBS just reported. |
-| One mic or the board main mix | Behringer | Shown on a guide card. The X-USB mix has no remote control. The channel name must already be in the runbook. |
+| One mic or the board main mix | Behringer X32 | Shown on a guide card. The X-USB mix has no remote control. The channel name must already be in the runbook. |
 
 Starting or stopping the stream, clicking Go Live, changing the stream key, and deleting a source are not actions.
 
@@ -27,7 +27,7 @@ One A2UI surface, basic catalog:
 
 - Status, already built: scene, YouTube output, house-mix line, fault cards.
 - Chat: a `TextField` and an Ask `Button`. The reply is two or three sentences.
-- Guide card: the place in large type (`OBS Audio Mixer` or `Behringer`), the control name (`Audio Input Capture`), then the steps. An Apply button is included only when the policy accepted an action and `ALLOW_APPLY` is true.
+- Guide card: the place in large type (`OBS Audio Mixer` or `Behringer X32`), the control name (`Audio Input Capture`), then the steps. An Apply button is included only when the policy accepted an action and `ALLOW_APPLY` is true.
 
 An unknown board channel becomes a question on that card. The model does not invent a knob name.
 
