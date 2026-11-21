@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from church_av.models import BoardReading, Snapshot, StripReading
 from church_av.runbook import Runbook
+from church_av.x32_read import usable_name
 
 QUIET_DB = -55.0
 
@@ -29,6 +30,28 @@ class PathReport:
 
     def summary(self) -> str:
         return " · ".join(f"{stage.label} {stage.reading}" for stage in self.stages)
+
+
+def house_channels(board: BoardReading | None, runbook: Runbook) -> list[tuple[StripReading, str]]:
+    """Channels that are not muted and sit above the noise floor, so they reach Main."""
+    if board is None or not board.connected:
+        return []
+    found: list[tuple[StripReading, str]] = []
+    for strip in board.channels:
+        if strip.on is False:
+            continue
+        if strip.meter_db is None or strip.meter_db <= QUIET_DB:
+            continue
+        found.append((strip, _channel_label(strip, runbook)))
+    return found
+
+
+def _channel_label(strip: StripReading, runbook: Runbook) -> str:
+    live = usable_name(strip.name, strip.index)
+    name = live or runbook.scribble("channel", strip.index)
+    if name:
+        return f"{strip.index} {name}"
+    return f"Channel {strip.index}"
 
 
 def describe_path(snapshot: Snapshot, runbook: Runbook) -> PathReport:

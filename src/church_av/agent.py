@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from church_av.models import Fault, Snapshot
-from church_av.path import describe_path
+from church_av.path import describe_path, house_channels
 from church_av.runbook import Runbook
 
 MODEL = "gemini-3.5-flash"
@@ -16,7 +16,7 @@ Answer the question the operator asked.
 The facts in the message are the only live readings and church names you have.
 Do not recite a general checklist unless the operator asked for one.
 Reply in the language the operator wrote in. An English question gets an English reply. A Chinese question gets a Chinese reply.
-When the operator asks for a diagram, the screen draws the signal path from the runbook and the live reading. Explain that path. Do not draw it as text, and do not invent a channel, a bus, or a connection.
+The path box draws the signal path. It lists only channels that are unmuted and above the noise floor. Explain that path. Do not draw it as text, and do not list quiet or muted channels as if they were in the house mix.
 When no question was asked and you are explaining a detector fault, write the whole reply in Chinese.
 OBS receives one combined X-USB feed, Audio Input Capture. Individual mics are not separate OBS inputs.
 The Behringer X32 may be monitored separately over OSC. Those readings are channel, bus, and output meters.
@@ -325,7 +325,16 @@ def _facts(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> str:
         parts.append(report.summary())
     scribble = _scribble_fact(runbook)
     if scribble:
-        parts.append(scribble)
+        parts.append(scribble + " These are labels, not a list of what is in the mix right now.")
+    reaching = house_channels(snapshot.board, runbook)
+    if snapshot.board is not None and snapshot.board.connected:
+        if reaching:
+            names = ", ".join(label for _strip, label in reaching)
+            parts.append(f"Reaching the house mix now: {names}.")
+        else:
+            parts.append("No channel is reaching the house mix.")
+    else:
+        parts.append("The X32 is not connected, so active channels are unknown.")
     unmapped = [item.role for item in runbook.channels if item.kind == "channel" and not item.strip]
     if unmapped:
         parts.append("Still unmapped: " + ", ".join(unmapped) + ".")

@@ -2,7 +2,7 @@ import json
 
 from church_av.a2ui import CATALOG_ID, build_messages
 from church_av.detector import Detector
-from church_av.models import Action, InputReading, Snapshot
+from church_av.models import Action, BoardReading, InputReading, Snapshot, StripReading
 from church_av.runbook import load_runbook
 from church_av.server import Booth
 from pathlib import Path
@@ -162,36 +162,50 @@ def _settings(allow_apply: bool, runbook_path: Path | None = None):
     )
 
 
-def test_a_diagram_question_draws_the_path_and_a_plain_question_does_not():
+def _channel(index: int, name: str, meter: float, on: bool | None) -> StripReading:
+    return StripReading("channel", index, name, meter, on)
+
+
+def test_path_box_lists_only_channels_reaching_the_house_mix():
     book = load_runbook(ROOT / "runbook" / "church.yaml")
-    reading = snapshot(program_scene="3-Stage 50/Slide 50", streaming=True)
-    asked = "give me a diagram of the AV setup currently in use."
-    surface = build_messages(reading, book, [], allow_apply=False, guide="See the path.", asked=asked)[0]["createSurface"]
+    waiting = snapshot(program_scene="3-Stage 50/Slide 50", streaming=True)
+    waiting_surface = build_messages(waiting, book, [], allow_apply=False)[0]["createSurface"]
+    waiting_diagram = {item["id"]: item for item in waiting_surface["components"]}["setup_diagram"]
+    waiting_audio = [box["title"] for stage in waiting_diagram["lanes"][0]["stages"] for box in stage]
+    assert waiting_audio[0] == "Channels"
+    assert "1-9 Worship" not in waiting_audio
+    assert "14 Moderator" not in waiting_audio
+    assert "Main L/R" in waiting_audio
+
+    board = BoardReading(
+        connected=True,
+        channels=[
+            _channel(2, "Worship", -18, True),
+            _channel(3, "Worship", -80, True),
+            _channel(14, "Moderator", -12, False),
+            _channel(15, "Reception", -20, True),
+            _channel(20, "", -10, True),
+        ],
+    )
+    reading = snapshot(program_scene="3-Stage 50/Slide 50", streaming=True, board=board)
+    surface = build_messages(reading, book, [], allow_apply=False)[0]["createSurface"]
     by_id = {item["id"]: item for item in surface["components"]}
     diagram = by_id["setup_diagram"]
-    assert diagram["component"] == "SetupDiagram"
+    assert by_id["path_card"]["component"] == "Card"
     audio = [box["title"] for stage in diagram["lanes"][0]["stages"] for box in stage]
     picture = [box["title"] for stage in diagram["lanes"][1]["stages"] for box in stage]
-    assert "1-9 Worship" in audio
-    assert "14 Moderator" in audio
-    assert "15 Reception" in audio
+    assert audio[:3] == ["2 Worship", "15 Reception", "Channel 20"]
+    assert "3 Worship" not in audio
+    assert "14 Moderator" not in audio
     assert "Main L/R" in audio
     assert "X-USB" in audio
     assert "Audio Input Capture" in audio
     assert "YouTube" in audio
     assert "Wall Cam" in picture
     assert "Slide PC" in picture
-    assert "3-Stage 50/Slide 50" in picture
-    aside = " ".join(diagram["aside"])
-    assert "Pulpit mic" in aside
-    assert "No separate stream mix" in aside
-    assert "not on the network" in aside
-    plain = build_messages(reading, book, [], allow_apply=False, asked="what is the house mix?")
-    plain_ids = {item["id"] for item in plain[0]["createSurface"]["components"]}
-    assert "setup_diagram" not in plain_ids
-    chinese = build_messages(reading, book, [], allow_apply=False, asked="给我一张示意图")
-    chinese_ids = {item["id"] for item in chinese[0]["createSurface"]["components"]}
-    assert "setup_diagram" in chinese_ids
+    chosen = next(box for stage in diagram["lanes"][0]["stages"] for box in stage if box["id"] == "ch-2")
+    assert chosen["note"] == "2 Worship is open at -18 dB and is reaching the house mix."
+    assert "left off" in " ".join(diagram["aside"])
 
 
 def test_the_surface_has_a_chat_field_and_a_guide_card():

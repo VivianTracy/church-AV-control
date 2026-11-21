@@ -412,6 +412,8 @@ PAGE = r"""<!DOCTYPE html>
   .copy .steps li::before { content: counter(step); display: inline-grid; place-items: center;
        width: 1.3rem; height: 1.3rem; margin-right: 0.45rem; background: #3a332c; font-size: 0.8rem; }
   button { font: inherit; background: #f4efe6; color: #141210; border: 0; padding: 0.5rem 0.85rem; margin-top: 0.45rem; }
+  #path_card { background: #221e1a; border: 1px solid #3a332c; padding: 0.85rem 0.9rem 1rem; margin-top: 0.85rem; }
+  #path_kicker { color: #b7aa98; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
   #guide { background: #241c18; border: 1px solid #5a4034; margin-top: 0.85rem; }
   #guide_body { padding: 0.9rem 1rem 1rem; }
   #guide_icon { color: #e06c5a; width: 1.7rem; height: 1.7rem; border: 2px solid #e06c5a; border-radius: 99px; padding: 0.35rem; }
@@ -421,9 +423,12 @@ PAGE = r"""<!DOCTYPE html>
   .setup-kicker { color: #b7aa98; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .setup-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
   .setup-stage { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-  .setup-box { background: #14110f; border: 1px solid #3a332c; border-radius: 8px; padding: 0.35rem 0.55rem; }
-  .setup-box strong { display: block; font-size: 0.92rem; font-weight: 650; }
-  .setup-box span { display: block; color: #b7aa98; font-size: 0.75rem; margin-top: 0.1rem; }
+  button.setup-box { font: inherit; text-align: left; color: #f4efe6; background: #14110f; border: 1px solid #3a332c;
+                      border-radius: 8px; padding: 0.35rem 0.55rem; margin: 0; cursor: pointer; }
+  button.setup-box.is-selected { border-color: #f4efe6; }
+  button.setup-box strong { display: block; font-size: 0.92rem; font-weight: 650; }
+  button.setup-box span { display: block; color: #b7aa98; font-size: 0.75rem; margin-top: 0.1rem; }
+  .setup-detail { margin: 0.15rem 0 0; color: #f4efe6; font-size: 0.95rem; }
   .setup-arrow { color: #8d8478; font-size: 1rem; }
   .setup-aside { margin: 0; padding-left: 1.1rem; color: #d5cbbd; font-size: 0.88rem; }
   .setup-aside li { margin: 0.15rem 0; }
@@ -460,6 +465,7 @@ PAGE = r"""<!DOCTYPE html>
 const SURFACE = "booth";
 const preview = new URLSearchParams(location.search).get("preview");
 const drafts = {};
+let selectedBox = "";
 
 function questionInput() {
   const field = document.getElementById("question");
@@ -672,7 +678,30 @@ function renderNode(id, byId, data) {
   return document.createElement("span");
 }
 
+function setupNotes(node) {
+  const notes = {};
+  for (const lane of node.lanes || []) {
+    for (const stage of lane.stages || []) {
+      for (const item of stage) {
+        if (item.id) notes[item.id] = item.note || item.title || "";
+      }
+    }
+  }
+  return notes;
+}
+
+function paintSelection(notes) {
+  document.querySelectorAll("button.setup-box").forEach((box) => {
+    box.classList.toggle("is-selected", box.dataset.boxId === selectedBox);
+  });
+  const detail = document.getElementById("setup_detail");
+  if (!detail) return;
+  detail.textContent = notes[selectedBox] || "Select a box to read that step.";
+}
+
 function setupDiagram(node) {
+  const notes = setupNotes(node);
+  if (selectedBox && !notes[selectedBox]) selectedBox = "";
   const el = document.createElement("div");
   el.id = node.id;
   el.className = "setup";
@@ -695,16 +724,23 @@ function setupDiagram(node) {
       const group = document.createElement("div");
       group.className = "setup-stage";
       for (const item of stage) {
-        const box = document.createElement("div");
+        const box = document.createElement("button");
+        box.type = "button";
         box.className = "setup-box";
+        box.dataset.boxId = item.id || "";
+        if (item.id && item.id === selectedBox) box.classList.add("is-selected");
         const title = document.createElement("strong");
         title.textContent = item.title || "";
         box.appendChild(title);
         if (item.detail) {
-          const detail = document.createElement("span");
-          detail.textContent = item.detail;
-          box.appendChild(detail);
+          const reading = document.createElement("span");
+          reading.textContent = item.detail;
+          box.appendChild(reading);
         }
+        box.addEventListener("click", () => {
+          selectedBox = selectedBox === item.id ? "" : item.id;
+          paintSelection(notes);
+        });
         group.appendChild(box);
       }
       flow.appendChild(group);
@@ -712,11 +748,16 @@ function setupDiagram(node) {
     block.append(kicker, flow);
     el.appendChild(block);
   }
-  const notes = node.aside || [];
-  if (notes.length) {
+  const detail = document.createElement("p");
+  detail.id = "setup_detail";
+  detail.className = "setup-detail";
+  detail.textContent = notes[selectedBox] || "Select a box to read that step.";
+  el.appendChild(detail);
+  const lines = node.aside || [];
+  if (lines.length) {
     const aside = document.createElement("ul");
     aside.className = "setup-aside";
-    for (const line of notes) {
+    for (const line of lines) {
       const item = document.createElement("li");
       item.textContent = line;
       aside.appendChild(item);

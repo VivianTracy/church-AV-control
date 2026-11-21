@@ -148,7 +148,7 @@ def test_instruction_keeps_the_agent_from_driving_the_stream():
     assert "An English question gets an English reply." in INSTRUCTION
     assert "When no question was asked and you are explaining a detector fault, write the whole reply in Chinese." in INSTRUCTION
     assert "two or three sentences" not in INSTRUCTION
-    assert "the screen draws the signal path" in INSTRUCTION
+    assert "only channels that are unmuted and above the noise floor" in INSTRUCTION
 
 
 def test_installed_agent_keeps_the_read_only_tools():
