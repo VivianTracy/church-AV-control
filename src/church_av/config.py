@@ -35,6 +35,7 @@ class Settings:
     poll_seconds: float
     runbook_path: Path
     root: Path
+    google_api_key: str = ""
 
     @classmethod
     def load(cls, root: Path | None = None) -> "Settings":
@@ -50,4 +51,5 @@ class Settings:
             poll_seconds=float(os.environ.get("POLL_SECONDS", "2")),
             runbook_path=root / "runbook" / "church.yaml",
             root=root,
+            google_api_key=os.environ.get("GOOGLE_API_KEY", "").strip(),
         )

@@ -8,6 +8,9 @@ dependencies = [
   "PyYAML>=6",
 ]
 
+[project.optional-dependencies]
+agent = ["google-adk>=1.18"]
+
 [project.scripts]
 church-av = "church_av.__main__:main"
 

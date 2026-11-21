@@ -6,6 +6,21 @@ from church_av.runbook import Runbook
 CATALOG_ID = "https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json"
 SURFACE_ID = "booth"
 
+# Pane weights match the scene names used on the service PC.
+_STAGE = {
+    "1-Stage Only": [("Wall Cam", 1)],
+    "2-Slide Only": [("Slide PC", 1)],
+    "3-Stage 50/Slide 50": [("Wall Cam", 1), ("Slide PC", 1)],
+    "4-Stage 100/Slide 30": [("Wall Cam", 3), ("Slide PC", 1)],
+    "5-Stage 30/Slide 70": [("Wall Cam", 1), ("Slide PC", 2)],
+    "6-Stage 30/Slide 100": [("Slide PC", 3), ("Wall Cam", 1)],
+    "7-Mobile Cam 50/Slide 50": [("Mobile Cam", 1), ("Slide PC", 1)],
+    "8-Mobile Cam Only": [("Mobile Cam", 1)],
+    "9-Studio (Wall Cam + Mobile Cam)": [("Wall Cam", 1), ("Mobile Cam", 1)],
+    "10-Acer Monitor": [("Acer", 1)],
+    "11-Acer 70 + Slide 30": [("Acer", 2), ("Slide PC", 1)],
+}
+
 
 def build_messages(
     snapshot: Snapshot,
@@ -14,43 +29,28 @@ def build_messages(
     allow_apply: bool,
 ) -> list[dict]:
     components: list[dict] = []
-    root_children: list[str] = ["title", "scene_line", "stream_line", "mix_line"]
-
+    root_children = ["title", "stage_heading", "stage", "status"]
     components.append(_text("title", runbook.church))
-    scene = snapshot.program_scene or "No scene"
-    note = runbook.scene_note(snapshot.program_scene)
-    picture = f" — {note.picture}" if note else ""
-    components.append(_text("scene_line", f"On screen: {scene}{picture}"))
-    if not snapshot.connected:
-        stream_text = "Service machine: not connected"
-    elif snapshot.streaming:
-        stream_text = "YouTube output: live"
-    elif snapshot.reconnecting:
-        stream_text = "YouTube output: reconnecting"
-    elif runbook.expect_stream_live:
-        stream_text = "YouTube output: stopped"
-    else:
-        stream_text = "YouTube output: stopped, and that is expected right now"
-    components.append(_text("stream_line", stream_text))
-    components.append(_text("mix_line", _mix_line(snapshot, runbook)))
+    components.append(_text("stage_heading", snapshot.program_scene or "No scene"))
+    components.extend(_stage(snapshot))
+    components.extend(_status(snapshot, runbook))
 
     if faults:
         root_children.append("fault_heading")
-        components.append(_text("fault_heading", "Needs attention"))
+        components.append(_text("fault_heading", "Adjust here"))
         for index, fault in enumerate(faults):
-            card_id = f"fault_{index}"
-            root_children.append(card_id)
+            root_children.append(f"fault_{index}")
             components.extend(_fault_card(index, fault, allow_apply))
-    else:
+    elif snapshot.connected:
         root_children.append("clear")
-        components.append(_text("clear", "Readings look normal."))
+        components.extend(_clear_card())
 
-    root_children.append("layout_heading")
-    components.append(_text("layout_heading", "Layouts this computer knows", variant="caption"))
-    layout_ids = _layout_lines(components, snapshot, runbook)
-    root_children.extend(layout_ids)
+    root_children.append("scene_heading")
+    root_children.append("scene_strip")
+    components.append(_text("scene_heading", "Scenes"))
+    components.extend(_scene_strip(snapshot, runbook))
 
-    components.insert(0, {"id": "root", "component": "Column", "children": root_children})
+    components.insert(0, _column("root", root_children))
     return [
         {
             "version": "1.0",
@@ -58,41 +58,111 @@ def build_messages(
                 "surfaceId": SURFACE_ID,
                 "catalogId": CATALOG_ID,
                 "components": components,
+                "dataModel": _meter_data(snapshot, runbook),
             },
         }
     ]
 
 
-def _mix_line(snapshot: Snapshot, runbook: Runbook) -> str:
-    mix = runbook.house_mix
-    house = snapshot.input_named(mix.obs_name)
-    if house is None:
-        return f"House mix: {mix.obs_name} is missing"
-    if house.muted:
-        state = "muted"
+def _status(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
+    scene = snapshot.program_scene or "No scene"
+    note = runbook.scene_note(snapshot.program_scene)
+    if not snapshot.connected:
+        picture = "Waiting for the service PC"
+    elif note:
+        picture = note.picture
     else:
-        state = "open"
-    fader = f", fader {house.volume_db:.0f} dB" if house.volume_db is not None else ""
-    meter = f", meter {house.meter_db:.0f} dB" if house.meter_db is not None else ""
-    return f"House mix ({mix.windows_device}): {state}{fader}{meter}"
+        picture = "Scene not in the runbook yet"
+    stream_value, stream_detail, stream_icon = _stream_copy(snapshot, runbook)
+    mix_value, mix_detail, mix_icon = _mix_copy(snapshot, runbook)
+    return [
+        _row("status", ["scene_card", "stream_card", "mix_card"]),
+        _card("scene_card", "scene_body"),
+        _column("scene_body", ["scene_icon", "scene_kicker", "scene_value", "scene_detail"]),
+        _icon("scene_icon", "camera"),
+        _text("scene_kicker", "On screen", "caption"),
+        _text("scene_value", scene),
+        _text("scene_detail", picture, "caption"),
+        _card("stream_card", "stream_body"),
+        _column("stream_body", ["stream_icon", "stream_kicker", "stream_value", "stream_detail"]),
+        _icon("stream_icon", stream_icon),
+        _text("stream_kicker", "YouTube", "caption"),
+        _text("stream_value", stream_value),
+        _text("stream_detail", stream_detail, "caption"),
+        _card("mix_card", "mix_body"),
+        _column("mix_body", ["mix_icon", "mix_kicker", "mix_value", "mix_detail", "meter"]),
+        _icon("mix_icon", mix_icon),
+        _text("mix_kicker", "House mix", "caption"),
+        _text("mix_value", mix_value),
+        _text("mix_detail", mix_detail, "caption"),
+        _row("meter", ["meter_caption"]),
+        _text("meter_caption", "X-USB meter", "caption"),
+    ]
+
+
+def _stage(snapshot: Snapshot) -> list[dict]:
+    panes = _STAGE.get(snapshot.program_scene or "", [(snapshot.program_scene or "No scene", 1)])
+    components: list[dict] = [_row("stage", [f"pane_{index}" for index in range(len(panes))])]
+    for index, (label, weight) in enumerate(panes):
+        components.append(_card(f"pane_{index}", f"pane_{index}_label", weight))
+        components.append(_text(f"pane_{index}_label", label))
+    return components
+
+
+def _scene_strip(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
+    known = [scene.name for scene in runbook.scenes]
+    names = known or snapshot.scenes
+    if snapshot.program_scene and snapshot.program_scene not in names:
+        names = [*names, snapshot.program_scene]
+
+    def sort_key(name: str) -> tuple:
+        head = name.split("-", 1)[0]
+        return (int(head), name) if head.isdigit() else (999, name)
+
+    ordered = sorted(names, key=sort_key)
+    ids = []
+    components: list[dict] = []
+    for index, name in enumerate(ordered):
+        card_id = "scene_current" if name == snapshot.program_scene else f"scene_{index}"
+        ids.append(card_id)
+        components.append(_card(card_id, f"{card_id}_label"))
+        components.append(_text(f"{card_id}_label", name, "caption"))
+    components.insert(0, _row("scene_strip", ids))
+    return components
+
+
+def _clear_card() -> list[dict]:
+    return [
+        _card("clear", "clear_body"),
+        _row("clear_body", ["clear_icon", "clear_text"]),
+        _icon("clear_icon", "check"),
+        _text("clear_text", "Readings look normal."),
+    ]
 
 
 def _fault_card(index: int, fault: Fault, allow_apply: bool) -> list[dict]:
-    body_id = f"fault_{index}_body"
-    steps_id = f"fault_{index}_steps"
-    column_id = f"fault_{index}_column"
-    children = [f"fault_{index}_title", body_id, steps_id]
-    components = [
-        {"id": f"fault_{index}", "component": "Card", "child": column_id},
-        {"id": column_id, "component": "Column", "children": children},
-        _text(f"fault_{index}_title", fault.title),
-        _text(body_id, fault.evidence),
-        _text(steps_id, " ".join(fault.steps)),
+    place, control, icon_name = _guide_place(fault)
+    graphic, mark = _graphic(fault)
+    copy_ids = [f"fault_{index}_place", f"fault_{index}_control", f"fault_{index}_body"]
+    components: list[dict] = [
+        _card(f"fault_{index}", f"fault_{index}_row"),
+        _row(f"fault_{index}_row", [f"fault_{index}_{graphic}", f"fault_{index}_copy"]),
+        _column(f"fault_{index}_{graphic}", [f"fault_{index}_icon", f"fault_{index}_where"]),
+        _icon(f"fault_{index}_icon", icon_name),
+        _text(f"fault_{index}_where", mark, "caption"),
+        _column(f"fault_{index}_copy", copy_ids),
+        _text(f"fault_{index}_place", place, "caption"),
+        _text(f"fault_{index}_control", control),
+        _text(f"fault_{index}_body", fault.evidence),
     ]
+    for step_index, step in enumerate(fault.steps):
+        step_id = f"fault_{index}_step_{step_index}"
+        copy_ids.append(step_id)
+        components.append(_text(step_id, step))
     if allow_apply and fault.action is not None:
         label_id = f"fault_{index}_apply_label"
         button_id = f"fault_{index}_apply"
-        children.append(button_id)
+        copy_ids.append(button_id)
         components.append(_text(label_id, fault.action.summary))
         components.append(
             {
@@ -111,26 +181,79 @@ def _fault_card(index: int, fault: Fault, allow_apply: bool) -> list[dict]:
     return components
 
 
-def _layout_lines(components: list[dict], snapshot: Snapshot, runbook: Runbook) -> list[str]:
-    known = {scene.name: scene.picture for scene in runbook.scenes}
-    names = snapshot.scenes or list(known)
-    ids: list[str] = []
+def _graphic(fault: Fault) -> tuple[str, str]:
+    if fault.id.startswith("house_mix"):
+        return "fader", "X-USB"
+    if fault.id == "obs_disconnected":
+        return "badge", "PC"
+    return "badge", "OBS"
 
-    def sort_key(name: str) -> tuple:
-        head = name.split("-", 1)[0]
-        return (int(head), name) if head.isdigit() else (999, name)
 
-    for index, name in enumerate(sorted(names, key=sort_key)):
-        picture = known.get(name)
-        if picture:
-            line = f"{name}: {picture}"
-        else:
-            line = f"{name}: OBS has this scene, and the runbook does not describe it yet."
-        component_id = f"layout_{index}"
-        components.append(_text(component_id, line, variant="caption"))
-        ids.append(component_id)
-    return ids
+def _guide_place(fault: Fault) -> tuple[str, str, str]:
+    if fault.id in {"house_mix_muted", "house_mix_fader_low", "house_mix_clipping", "house_mix_silent"}:
+        icon_name = "volumeMute" if fault.id == "house_mix_muted" else "volumeUp"
+        return "OBS Audio Mixer", "Audio Input Capture", icon_name
+    if fault.id in {"stream_stopped", "stream_reconnecting", "frames_skipped"}:
+        return "OBS controls", "Stream button", "play"
+    if fault.id == "obs_disconnected":
+        return "Service PC", "OBS WebSocket", "warning"
+    return "OBS", fault.title, "warning"
+
+
+def _stream_copy(snapshot: Snapshot, runbook: Runbook) -> tuple[str, str, str]:
+    if not snapshot.connected:
+        return "Offline", "Cannot read the service PC", "warning"
+    if snapshot.streaming:
+        return "Live", "OBS is sending", "play"
+    if snapshot.reconnecting:
+        return "Reconnecting", "The upload dropped", "warning"
+    if runbook.expect_stream_live:
+        return "Stopped", "The service should be live", "stop"
+    return "Stopped", "Expected while you are not live", "stop"
+
+
+def _mix_copy(snapshot: Snapshot, runbook: Runbook) -> tuple[str, str, str]:
+    house = snapshot.input_named(runbook.house_mix.obs_name)
+    raw = runbook.house_mix.windows_device or runbook.house_mix.obs_name
+    device = raw.rsplit("(", 1)[-1].rstrip(")") if "(" in raw else raw
+    if house is None:
+        return "Missing", device, "warning"
+    if house.muted:
+        detail = f"Muted · {device}"
+        return "Muted", detail, "volumeMute"
+    if house.volume_db is None:
+        return "Open", device, "volumeUp"
+    return "Open", f"Fader {house.volume_db:.0f} dB · {device}", "volumeUp"
+
+
+def _meter_data(snapshot: Snapshot, runbook: Runbook) -> dict:
+    house = snapshot.input_named(runbook.house_mix.obs_name)
+    return {
+        "meterDb": None if house is None else house.meter_db,
+        "faderDb": None if house is None else house.volume_db,
+        "muted": bool(house and house.muted),
+        "connected": snapshot.connected,
+    }
 
 
 def _text(component_id: str, text: str, variant: str = "body") -> dict:
     return {"id": component_id, "component": "Text", "text": text, "variant": variant}
+
+
+def _icon(component_id: str, name: str) -> dict:
+    return {"id": component_id, "component": "Icon", "name": name}
+
+
+def _row(component_id: str, children: list[str]) -> dict:
+    return {"id": component_id, "component": "Row", "children": children, "align": "stretch"}
+
+
+def _column(component_id: str, children: list[str]) -> dict:
+    return {"id": component_id, "component": "Column", "children": children}
+
+
+def _card(component_id: str, child: str, weight: int | None = None) -> dict:
+    card = {"id": component_id, "component": "Card", "child": child}
+    if weight is not None:
+        card["weight"] = weight
+    return card
