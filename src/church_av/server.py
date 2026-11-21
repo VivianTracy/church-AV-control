@@ -7,7 +7,7 @@ from threading import Lock, Thread
 from time import sleep
 from urllib.parse import urlparse
 
-from church_av.agent import Guide, explain
+from church_av.agent import Guide, explain, local_reply
 from church_av.a2ui import SURFACE_ID, build_messages
 from church_av.config import Settings
 from church_av.detector import Detector
@@ -30,6 +30,9 @@ class Booth:
         self.last_action = ""
         self.guide = Guide("Waiting for the first reading.", "detector")
         self._guide_fault_ids: tuple[str, ...] | None = None
+        self.chat_guide: Guide | None = None
+        self.chat_question = ""
+        self.chat_scope = ""
 
     def tick(self) -> None:
         snapshot = self.reader.read()
@@ -56,7 +59,9 @@ class Booth:
             snapshot = self.snapshot
             faults = list(self.faults)
             last_action = self.last_action
-            guide = self.guide
+            guide, asked = self._chat_for("live")
+            if guide is None:
+                guide = self.guide
         return {
             "connected": snapshot.connected,
             "programScene": snapshot.program_scene,
@@ -67,8 +72,46 @@ class Booth:
             "error": snapshot.error,
             "snapshot": asdict(snapshot),
             "faults": [_fault_dict(fault) for fault in faults],
-            "a2ui": build_messages(snapshot, self.runbook, faults, self.settings.allow_apply),
+            "a2ui": build_messages(
+                snapshot,
+                self.runbook,
+                faults,
+                self.settings.allow_apply,
+                guide=guide.reply,
+                asked=asked,
+            ),
         }
+
+    def ask(self, question: str, preview: str = "") -> Guide:
+        """Answer one operator question. A preview name reads a saved snapshot, not OBS."""
+        preview = preview.strip()
+        if preview:
+            if preview not in FIXTURE_NAMES:
+                raise ValueError("Unknown preview")
+            snapshot, faults = _fixture_reading(self.runbook, preview)
+            scope = preview
+        else:
+            with self._lock:
+                snapshot = self.snapshot
+                faults = list(self.faults)
+            scope = "live"
+        guide = explain(
+            snapshot,
+            self.runbook,
+            faults,
+            question=question,
+            api_key=self.settings.google_api_key,
+        )
+        with self._lock:
+            self.chat_guide = guide
+            self.chat_question = question
+            self.chat_scope = scope
+        return guide
+
+    def _chat_for(self, scope: str) -> tuple[Guide | None, str]:
+        if self.chat_guide is not None and self.chat_scope == scope:
+            return self.chat_guide, self.chat_question
+        return None, ""
 
     def handle_action(self, message: dict) -> dict:
         action = message.get("action") if isinstance(message, dict) else None
@@ -79,6 +122,20 @@ class Booth:
         fault_id = str(context.get("faultId", ""))
         with self._lock:
             fault = next((item for item in self.faults if item.id == fault_id), None)
+        if name == "ask":
+            question = str(context.get("question", "")).strip()
+            preview = str(context.get("preview", "")).strip()
+            if not question:
+                return {"ok": False, "message": "Type a question first."}
+            try:
+                guide = self.ask(question, preview)
+            except ValueError as exc:
+                return {"ok": False, "message": str(exc)}
+            return {
+                "ok": True,
+                "message": guide.reply,
+                "guide": {"reply": guide.reply, "source": guide.source},
+            }
         if name == "dismiss_fault":
             self.detector.dismiss(fault_id)
             self.tick()
@@ -209,20 +266,38 @@ def serve(booth: Booth) -> None:
         server.server_close()
 
 
-def _preview_state(booth: Booth, name: str) -> dict:
+def _fixture_reading(runbook: Runbook, name: str) -> tuple[Snapshot, list[Fault]]:
     detector = Detector()
     snapshot = load_fixture(name)[0]
     faults: list[Fault] = []
     for item in load_fixture(name):
         snapshot = item
-        faults = detector.detect(item, booth.runbook)
+        faults = detector.detect(item, runbook)
+    return snapshot, faults
+
+
+def _preview_state(booth: Booth, name: str) -> dict:
+    snapshot, faults = _fixture_reading(booth.runbook, name)
+    with booth._lock:
+        guide, asked = booth._chat_for(name)
+    if guide is None:
+        guide = Guide(local_reply(snapshot, booth.runbook, faults), "detector")
+        asked = ""
     return {
         "connected": snapshot.connected,
         "programScene": snapshot.program_scene,
         "streaming": snapshot.streaming,
         "allowApply": False,
         "preview": name,
-        "a2ui": build_messages(snapshot, booth.runbook, faults, allow_apply=False),
+        "guide": {"reply": guide.reply, "source": guide.source},
+        "a2ui": build_messages(
+            snapshot,
+            booth.runbook,
+            faults,
+            allow_apply=False,
+            guide=guide.reply,
+            asked=asked,
+        ),
     }
 
 
@@ -305,6 +380,17 @@ PAGE = r"""<!DOCTYPE html>
   .copy .steps li::before { content: counter(step); display: inline-grid; place-items: center;
        width: 1.3rem; height: 1.3rem; margin-right: 0.45rem; background: #3a332c; font-size: 0.8rem; }
   button { font: inherit; background: #f4efe6; color: #141210; border: 0; padding: 0.5rem 0.85rem; margin-top: 0.45rem; }
+  #guide { background: #241c18; border: 1px solid #5a4034; margin-top: 0.85rem; }
+  #guide_body { padding: 0.9rem 1rem 1rem; }
+  #guide_icon { color: #e06c5a; width: 1.7rem; height: 1.7rem; border: 2px solid #e06c5a; border-radius: 99px; padding: 0.35rem; }
+  #guide_reply { margin: 0.25rem 0 0; font-size: 1.05rem; }
+  #guide_asked { margin: 0; color: #b7aa98; }
+  #chat { align-items: end; margin-top: 0.75rem; }
+  #question { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; color: #b7aa98;
+              font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  #question input { font: 17px/1.35 ui-sans-serif, system-ui, sans-serif; text-transform: none;
+                    letter-spacing: 0; color: #f4efe6; background: #1c1916; border: 1px solid #3a332c;
+                    border-radius: 8px; padding: 0.55rem 0.7rem; }
   #scene_strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 0.4rem; }
   #scene_strip article { background: #1c1916; border: 1px solid #3a332c; padding: 0.45rem 0.55rem; }
   #scene_current { background: #2a261f; border-color: #f4efe6; }
@@ -319,6 +405,7 @@ PAGE = r"""<!DOCTYPE html>
     article[id^="fault_"] > .row { flex-direction: column; }
     .mixer, .badge { width: auto; flex-basis: auto; flex-direction: row; justify-content: flex-start; }
     .mixer .track { height: 4.5rem; }
+    #chat { flex-direction: column; align-items: stretch; }
   }
 </style>
 </head>
@@ -330,6 +417,32 @@ PAGE = r"""<!DOCTYPE html>
 <script>
 const SURFACE = "booth";
 const preview = new URLSearchParams(location.search).get("preview");
+const drafts = {};
+
+function questionInput() {
+  const field = document.getElementById("question");
+  if (!field) return null;
+  return field.tagName === "INPUT" ? field : field.querySelector("input");
+}
+
+function rememberDraft() {
+  const input = questionInput();
+  if (!input) return;
+  drafts.question = input.value;
+  drafts.focused = document.activeElement === input;
+  drafts.caret = input.selectionStart;
+}
+
+function restoreDraft() {
+  const input = questionInput();
+  if (!input || drafts.question == null) return;
+  input.value = drafts.question;
+  if (drafts.focused) {
+    input.focus();
+    const caret = drafts.caret == null ? input.value.length : drafts.caret;
+    input.setSelectionRange(caret, caret);
+  }
+}
 
 function textOf(byId, id) {
   const found = byId[id];
@@ -452,8 +565,27 @@ function renderNode(id, byId, data) {
     svg.id = id;
     return svg;
   }
+  if (node.component === "TextField") {
+    const field = document.createElement("label");
+    field.id = id;
+    field.textContent = node.label || "Ask";
+    const input = document.createElement("input");
+    input.type = node.textFieldType === "obscured" ? "password" : "text";
+    input.value = drafts.question || node.text || "";
+    input.placeholder = "What should I adjust?";
+    input.addEventListener("input", () => { drafts.question = input.value; });
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const button = document.getElementById("ask");
+      if (button) button.click();
+    });
+    field.appendChild(input);
+    return field;
+  }
   if (node.component === "Button") {
     const button = document.createElement("button");
+    button.id = id;
     button.textContent = textOf(byId, node.child);
     button.addEventListener("click", () => sendAction(node, id));
     return button;
@@ -530,6 +662,7 @@ function childToLi(node) {
 }
 
 function render(messages) {
+  rememberDraft();
   const created = messages.find((item) => item.createSurface && item.createSurface.surfaceId === SURFACE);
   const surface = created ? created.createSurface : {components: [], dataModel: {}};
   const byId = Object.fromEntries((surface.components || []).map((item) => [item.id, item]));
@@ -537,11 +670,20 @@ function render(messages) {
   screen.replaceChildren();
   if (!byId.root) return;
   screen.appendChild(renderNode("root", byId, surface.dataModel || {}));
+  restoreDraft();
 }
 
 async function sendAction(component, sourceId) {
   const event = component.action && component.action.event;
   if (!event) return;
+  const context = Object.assign({}, event.context || {});
+  if (event.name === "ask") {
+    const field = questionInput();
+    context.question = field ? field.value : "";
+    if (preview) context.preview = preview;
+    const askButton = document.getElementById("ask");
+    if (askButton) askButton.textContent = "Asking…";
+  }
   const body = {
     version: "1.0",
     action: {
@@ -549,7 +691,7 @@ async function sendAction(component, sourceId) {
       surfaceId: SURFACE,
       sourceComponentId: sourceId,
       timestamp: new Date().toISOString(),
-      context: event.context || {}
+      context: context
     }
   };
   const response = await fetch("/api/a2ui/action", {

@@ -95,6 +95,50 @@ def _settings(allow_apply: bool):
     )
 
 
+def test_the_surface_has_a_chat_field_and_a_guide_card():
+    surface = build_messages(snapshot(), runbook(), [], allow_apply=False)[0]["createSurface"]
+    by_id = {item["id"]: item for item in surface["components"]}
+    assert by_id["question"]["component"] == "TextField"
+    assert by_id["ask"]["action"]["event"]["name"] == "ask"
+    assert by_id["guide_reply"]["text"] == "Ask about what you see."
+
+
+def test_ask_about_a_muted_mix_shows_the_speaker_steps():
+    from church_av.server import _preview_state
+
+    reader = FakeReader()
+    booth = Booth(_settings(False), reader, runbook())
+    result = booth.handle_action(
+        {
+            "version": "1.0",
+            "action": {
+                "name": "ask",
+                "context": {
+                    "question": "The mix is muted. What do I do?",
+                    "preview": "muted_house_mix",
+                },
+            },
+        }
+    )
+    assert result["ok"] is True
+    assert reader.calls == []
+    assert "speaker" in result["message"]
+    assert "Audio Input Capture" in result["message"]
+    text = json.dumps(_preview_state(booth, "muted_house_mix")["a2ui"])
+    assert "You asked: The mix is muted. What do I do?" in text
+    assert "volumeMute" in text
+    assert "OBS Audio Mixer" in text
+
+
+def test_an_empty_question_is_refused():
+    booth = Booth(_settings(False), FakeReader(), runbook())
+    result = booth.handle_action(
+        {"version": "1.0", "action": {"name": "ask", "context": {"question": "  "}}}
+    )
+    assert result["ok"] is False
+    assert booth.chat_guide is None
+
+
 def test_apply_is_refused_while_watching_only():
     reader = FakeReader()
     booth = Booth(_settings(False), reader, runbook())

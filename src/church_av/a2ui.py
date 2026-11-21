@@ -27,6 +27,8 @@ def build_messages(
     runbook: Runbook,
     faults: list[Fault],
     allow_apply: bool,
+    guide: str = "",
+    asked: str = "",
 ) -> list[dict]:
     components: list[dict] = []
     root_children = ["title", "stage_heading", "stage", "status"]
@@ -45,8 +47,9 @@ def build_messages(
         root_children.append("clear")
         components.extend(_clear_card())
 
-    root_children.append("scene_heading")
-    root_children.append("scene_strip")
+    root_children.extend(["guide", "chat", "scene_heading", "scene_strip"])
+    components.extend(_guide_card(guide, asked, faults))
+    components.extend(_chat())
     components.append(_text("scene_heading", "Scenes"))
     components.extend(_scene_strip(snapshot, runbook))
 
@@ -129,6 +132,45 @@ def _scene_strip(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
         components.append(_text(f"{card_id}_label", name, "caption"))
     components.insert(0, _row("scene_strip", ids))
     return components
+
+
+def _guide_card(reply: str, asked: str, faults: list[Fault]) -> list[dict]:
+    show_speaker = bool(asked) and any(fault.id == "house_mix_muted" for fault in faults)
+    children: list[str] = []
+    components: list[dict] = []
+    if show_speaker:
+        children.append("guide_icon")
+        components.append(_icon("guide_icon", "volumeMute"))
+    children.append("guide_kicker")
+    components.append(_text("guide_kicker", "Guide", "caption"))
+    if asked:
+        children.append("guide_asked")
+        components.append(_text("guide_asked", f"You asked: {asked}", "caption"))
+    children.append("guide_reply")
+    shown = reply if asked else "Ask about what you see."
+    components.append(_text("guide_reply", shown or "Ask about what you see."))
+    return [_card("guide", "guide_body"), _column("guide_body", children), *components]
+
+
+def _chat() -> list[dict]:
+    return [
+        _row("chat", ["question", "ask"]),
+        {
+            "id": "question",
+            "component": "TextField",
+            "label": "Ask the booth",
+            "text": "",
+            "textFieldType": "shortText",
+        },
+        _text("ask_label", "Ask"),
+        {
+            "id": "ask",
+            "component": "Button",
+            "child": "ask_label",
+            "variant": "primary",
+            "action": {"event": {"name": "ask", "context": {}}},
+        },
+    ]
 
 
 def _clear_card() -> list[dict]:

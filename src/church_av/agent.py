@@ -175,4 +175,7 @@ def _ask_adk(tools: list, prompt: str) -> str:
             if close is not None:
                 await close()
 
-    return asyncio.run(_run())
+    try:
+        return asyncio.run(asyncio.wait_for(_run(), timeout=8))
+    except TimeoutError as exc:
+        raise RuntimeError("The guide took too long") from exc
