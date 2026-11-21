@@ -90,18 +90,17 @@ def test_a_health_check_is_answered_when_obs_is_down():
     assert "Cannot read the service machine" not in guide.reply
 
 
-def test_an_improvement_question_is_answered_in_chinese_when_obs_is_down():
+def test_a_question_goes_to_the_model_instead_of_the_checklist():
     from church_av.models import Snapshot
 
     snapshot = Snapshot(connected=False, error="timed out")
     faults = Detector().detect(snapshot, _book())
 
-    called = False
-
     def completer(prompt, tools):
-        nonlocal called
-        called = True
-        raise RuntimeError("503")
+        assert "suggest ways to improve streaming" in prompt
+        assert "Do not reply with a general pre-stream checklist" in prompt
+        assert "Chinese" in prompt
+        return "先听现场声，再看丢帧。"
 
     guide = explain(
         snapshot,
@@ -111,12 +110,30 @@ def test_an_improvement_question_is_answered_in_chinese_when_obs_is_down():
         api_key="test-key",
         completer=completer,
     )
-    assert called is False
+    assert guide.source == "adk"
+    assert guide.reply == "先听现场声，再看丢帧。"
+
+
+def test_a_failed_question_does_not_paste_the_checklist():
+    from church_av.models import Snapshot
+
+    snapshot = Snapshot(connected=False, error="timed out")
+    faults = Detector().detect(snapshot, _book())
+
+    def completer(prompt, tools):
+        raise RuntimeError("503")
+
+    guide = explain(
+        snapshot,
+        _book(),
+        faults,
+        question="what time does the service start? answer in Chinese",
+        api_key="test-key",
+        completer=completer,
+    )
     assert guide.source == "detector"
-    assert "服务电脑" in guide.reply
-    assert "Audio Input Capture" in guide.reply
-    assert "Behringer X32" in guide.reply
-    assert "Cannot read the service machine" not in guide.reply
+    assert "回答不了" in guide.reply
+    assert "Audio Input Capture" not in guide.reply
 
 
 def test_instruction_keeps_the_agent_from_driving_the_stream():

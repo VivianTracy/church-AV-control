@@ -10,7 +10,9 @@ from church_av.runbook import Runbook
 
 INSTRUCTION = """
 You are the church stream booth assistant.
-Use get_snapshot, get_runbook, and list_open_faults before you answer.
+Answer the question the operator asked.
+Use get_snapshot, get_runbook, or list_open_faults only when that question needs a live reading, a church name, or an open fault.
+Do not recite the runbook as the reply.
 Reply in two or three sentences a volunteer can follow from across the room.
 Reply in the language the operator wrote in. If they ask for Chinese, write the whole reply in Chinese.
 Name the OBS control, such as the Audio Mixer speaker for Audio Input Capture,
@@ -84,7 +86,7 @@ def explain(
 ) -> Guide:
     """Explain the reading. Without an API key, or if the model call fails, use the detector text."""
     local = local_reply(snapshot, runbook, faults, question)
-    if not api_key.strip() or _answer_from_the_runbook(question, snapshot):
+    if not api_key.strip():
         return Guide(local, "detector")
     tools = build_tools(snapshot, runbook, faults)
     try:
@@ -93,6 +95,8 @@ def explain(
         else:
             reply = _ask_adk(tools, _prompt(question, snapshot))
     except Exception:
+        if question:
+            return Guide(_could_not_answer(question, snapshot), "detector")
         return Guide(local, "detector")
     reply = (reply or "").strip()
     if not reply:
@@ -106,11 +110,8 @@ def local_reply(
     faults: list[Fault],
     question: str | None = None,
 ) -> str:
-    chinese = bool(question) and _wants_chinese(question)
-    if question and _asks_for_a_check(question):
-        return _health_check(snapshot, runbook, chinese)
-    if question and (_asks_to_improve(question) or (chinese and not snapshot.connected)):
-        return _improve_streaming(snapshot, runbook, chinese)
+    if question and not snapshot.connected and _asks_for_a_check(question):
+        return _health_check(snapshot, runbook, _wants_chinese(question))
     if not faults:
         return _calm_status(snapshot, runbook)
     blocks = []
@@ -142,11 +143,6 @@ def _asks_for_a_check(question: str) -> bool:
     return any(phrase in text for phrase in ("health", "before streaming", "before the stream", "checklist", "开播前", "检查"))
 
 
-def _asks_to_improve(question: str) -> bool:
-    text = question.lower()
-    return any(phrase in text for phrase in ("improve", "better sound", "better picture", "优化", "改善", "改进"))
-
-
 def _wants_chinese(question: str) -> bool:
     if "中文" in question or "汉语" in question:
         return True
@@ -155,10 +151,14 @@ def _wants_chinese(question: str) -> bool:
     return any("\u4e00" <= char <= "\u9fff" for char in question)
 
 
-def _answer_from_the_runbook(question: str | None, snapshot: Snapshot) -> bool:
-    if not question or snapshot.connected:
-        return False
-    return _asks_for_a_check(question) or _asks_to_improve(question) or _wants_chinese(question)
+def _could_not_answer(question: str, snapshot: Snapshot) -> str:
+    if _wants_chinese(question):
+        if not snapshot.connected:
+            return "现在回答不了这个问题。服务电脑读不到，所以没有现场画面和音量。"
+        return "现在回答不了这个问题。请再问一次。"
+    if not snapshot.connected:
+        return "The guide could not answer that question. The service PC cannot be read from here, so there is no live picture or level."
+    return "The guide could not answer that question. Ask again."
 
 
 def _muted_names(runbook: Runbook) -> list[str]:
@@ -189,37 +189,6 @@ def _health_check(snapshot: Snapshot, runbook: Runbook, chinese: bool = False) -
     )
 
 
-def _improve_streaming(snapshot: Snapshot, runbook: Runbook, chinese: bool) -> str:
-    mix = runbook.house_mix
-    muted = _muted_names(runbook)
-    if chinese:
-        muted_text = "、".join(muted) if muted else "摄像头和幻灯片"
-        where = "现在读不到服务电脑，所以下面是在那台电脑上可以做的事，不是现场读数。" if not snapshot.connected else ""
-        return (
-            f"{where}声音：在 OBS 音频混音器里，让 {mix.obs_name} 保持取消静音，推子靠近 {mix.target_db:.0f} dB。"
-            f"{muted_text} 保持静音，免得把现场声送回去造成回声。"
-            f"在 {runbook.board_name} 上把主输出和要用的话筒推起来。通道名称还没写入手册，请看调音台面板上的标签。"
-            "OBS 推子不要超过 0 dB。"
-            "画面：如果 OBS 显示丢帧，先关掉服务电脑上别的程序。直播中不要改编码器、码率或分辨率，改了会中断播出。"
-            "开播请在服务电脑上点 Start Streaming。这个控制台不会替你开播。"
-        )
-    muted_text = ", ".join(muted) if muted else "the camera and slide sources"
-    where = (
-        "The service PC cannot be read from here, so these are steps on that PC, not a live reading. "
-        if not snapshot.connected
-        else ""
-    )
-    return (
-        f"{where}In the OBS Audio Mixer, leave {mix.obs_name} unmuted with the fader near {mix.target_db:.0f} dB, "
-        f"and leave {muted_text} muted so they do not feed the room back as echo. "
-        f"On the {runbook.board_name}, bring up the main mix and the mics you need, and read the labels on the board. "
-        "Do not push the OBS fader above 0 dB. "
-        "If OBS shows skipped frames, close other programs on the service PC. "
-        "Leave the encoder, bitrate, and resolution alone during a broadcast, because changing them interrupts the stream. "
-        "Start the stream on the service PC. This booth will not start it."
-    )
-
-
 def _prompt(question: str | None, snapshot: Snapshot) -> str:
     if question:
         asked = "The operator asked: " + question.strip() + " "
@@ -227,11 +196,17 @@ def _prompt(question: str | None, snapshot: Snapshot) -> str:
         if not snapshot.connected:
             return (
                 asked
-                + "OBS cannot be read right now. Answer from the runbook in two or three sentences. "
-                + "Do not spend the reply on the disconnect error. "
+                + "Answer this question. The live OBS reading is unavailable, so say that in one sentence and do not invent a scene or a meter. "
+                + "Use get_runbook only for a fact this question needs. "
+                + "Do not reply with a general pre-stream checklist unless they asked for one. "
                 + language
             )
-        return asked + "Use the tools. " + language + "Reply in two or three sentences and name where to adjust."
+        return (
+            asked
+            + "Answer this question. Use a tool only for a fact this question needs. "
+            + language
+            + "Reply in two or three sentences and name where to adjust."
+        )
     return (
         "A detector fault may be open. Use the tools. "
         "Reply in two or three sentences a volunteer can follow, and name where to adjust."
