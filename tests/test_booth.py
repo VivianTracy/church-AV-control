@@ -1,6 +1,6 @@
 import json
 
-from church_av.a2ui import CATALOG_ID, SceneHistory, build_messages
+from church_av.a2ui import CATALOG_ID, SCENE_HELP, build_messages
 from church_av.detector import Detector
 from church_av.models import Action, BoardReading, InputReading, Snapshot, StripReading
 from church_av.runbook import load_runbook
@@ -298,68 +298,16 @@ def test_apply_refuses_to_start_the_stream():
     assert reader.calls == []
 
 
-def test_scene_chips_are_the_current_scene_and_the_two_used_before_it():
-    history = SceneHistory()
-    history.note("1-Stage Only")
-    history.note("2-Slide Only")
-    history.note("3-Stage 50/Slide 50")
-    history.note("4-Stage 100/Slide 30")
-    assert history.names() == ["4-Stage 100/Slide 30", "3-Stage 50/Slide 50", "2-Slide Only"]
-
+def test_the_scene_chip_is_only_the_scene_on_screen_and_explains_the_obs_click():
     reading = snapshot(
         program_scene="4-Stage 100/Slide 30",
-        scenes=["1-Stage Only", "2-Slide Only", "3-Stage 50/Slide 50", "4-Stage 100/Slide 30"],
+        scenes=["1-Stage Only", "2-Slide Only", "4-Stage 100/Slide 30"],
     )
-    surface = build_messages(reading, runbook(), [], allow_apply=False, recent_scenes=history.names())[0][
-        "createSurface"
-    ]
+    surface = build_messages(reading, runbook(), [], allow_apply=False)[0]["createSurface"]
     by_id = {item["id"]: item for item in surface["components"]}
-    assert by_id["scene_strip"]["children"] == ["scene_current", "scene_1", "scene_2"]
+    assert by_id["scene_strip"]["children"] == ["scene_current"]
     assert by_id["scene_current_label"]["text"] == "4-Stage 100/Slide 30"
-    assert by_id["scene_1_label"]["text"] == "3-Stage 50/Slide 50"
-    assert by_id["scene_2_label"]["text"] == "2-Slide Only"
-    assert by_id["scene_1"]["action"]["event"]["name"] == "set_scene"
-    assert by_id["scene_1"]["action"]["event"]["context"]["sceneName"] == "3-Stage 50/Slide 50"
-    labels = [item["text"] for item in by_id.values() if item["id"].endswith("_label") and item["id"].startswith("scene_")]
-    assert labels == ["4-Stage 100/Slide 30", "3-Stage 50/Slide 50", "2-Slide Only"]
-    assert "scene_3" not in by_id
-
-
-class SceneReader:
-    def __init__(self):
-        self.scene = "2-Slide Only"
-        self.calls = []
-
-    def read(self) -> Snapshot:
-        return snapshot(program_scene=self.scene, scenes=["2-Slide Only", "1-Stage Only"])
-
-    def set_program_scene(self, name):
-        self.calls.append(name)
-        self.scene = name
-
-    def close(self):
-        return None
-
-
-def test_clicking_a_scene_switches_the_program_scene():
-    reader = SceneReader()
-    booth = Booth(_settings(False), reader, runbook())
-    booth.tick()
-    assert booth.scenes.names() == ["2-Slide Only"]
-    same = booth.handle_action(
-        {"version": "1.0", "action": {"name": "set_scene", "context": {"sceneName": "2-Slide Only"}}}
-    )
-    assert same["ok"] is True
-    assert reader.calls == []
-
-    switched = booth.handle_action(
-        {"version": "1.0", "action": {"name": "set_scene", "context": {"sceneName": "1-Stage Only"}}}
-    )
-    assert switched["ok"] is True
-    assert reader.calls == ["1-Stage Only"]
-    assert booth.snapshot.program_scene == "1-Stage Only"
-    assert booth.scenes.names() == ["1-Stage Only", "2-Slide Only"]
-    chips = {item["id"]: item for item in booth.state()["a2ui"][0]["createSurface"]["components"]}
-    assert chips["scene_strip"]["children"] == ["scene_current", "scene_1"]
-    assert chips["scene_current_label"]["text"] == "1-Stage Only"
-    assert chips["scene_1_label"]["text"] == "2-Slide Only"
+    assert by_id["scene_current"]["action"]["event"]["name"] == "read_scene"
+    assert by_id["scene_current"]["action"]["event"]["context"]["note"] == SCENE_HELP
+    assert "set_scene" not in json.dumps(surface)
+    assert "1-Stage Only" not in json.dumps(by_id["scene_strip"])

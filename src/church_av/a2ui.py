@@ -16,31 +16,7 @@ CATALOG_ID = "https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json"
 SURFACE_ID = "booth"
 
 
-class SceneHistory:
-    """The program scene, then the two scenes that were on screen before it."""
-
-    def __init__(self) -> None:
-        self.current: str | None = None
-        self.used: list[str] = []
-
-    def note(self, name: str | None) -> None:
-        if not name or name == self.current:
-            return
-        if self.current:
-            self.used = [self.current, *[item for item in self.used if item not in {self.current, name}]]
-            del self.used[2:]
-        self.current = name
-
-    def names(self) -> list[str]:
-        shown: list[str] = []
-        if self.current:
-            shown.append(self.current)
-        for item in self.used:
-            if item not in shown:
-                shown.append(item)
-            if len(shown) == 3:
-                break
-        return shown
+SCENE_HELP = "In OBS on the service PC, click the scene you want in the Scenes list."
 
 
 def build_messages(
@@ -50,7 +26,6 @@ def build_messages(
     allow_apply: bool,
     guide: str = "",
     asked: str = "",
-    recent_scenes: list[str] | None = None,
 ) -> list[dict]:
     components: list[dict] = []
     root_children = ["title", "path_card"]
@@ -71,7 +46,7 @@ def build_messages(
     components.extend(_guide_card(guide, asked, faults))
     components.extend(_chat())
     components.append(_text("scene_heading", "Scenes"))
-    components.extend(_scene_strip(snapshot, recent_scenes))
+    components.extend(_scene_strip(snapshot))
 
     components.insert(0, _column("root", root_children))
     return [
@@ -99,33 +74,20 @@ def _scene_line(snapshot: Snapshot, runbook: Runbook) -> tuple[str, str]:
     return scene, picture
 
 
-def _scene_strip(snapshot: Snapshot, recent: list[str] | None) -> list[dict]:
-    """The scene on screen, then at most the two scenes used before it."""
-    available = set(snapshot.scenes)
-    names: list[str] = []
-    if snapshot.program_scene:
-        names.append(snapshot.program_scene)
-    for name in recent or []:
-        if name and name not in names and (name in available or name == snapshot.program_scene):
-            names.append(name)
-        if len(names) == 3:
-            break
-    ids = []
-    components: list[dict] = []
-    for index, name in enumerate(names):
-        card_id = "scene_current" if name == snapshot.program_scene else f"scene_{index}"
-        ids.append(card_id)
-        components.append(_text(f"{card_id}_label", name))
-        components.append(
-            {
-                "id": card_id,
-                "component": "Button",
-                "child": f"{card_id}_label",
-                "action": {"event": {"name": "set_scene", "context": {"sceneName": name}}},
-            }
-        )
-    components.insert(0, _row("scene_strip", ids))
-    return components
+def _scene_strip(snapshot: Snapshot) -> list[dict]:
+    """The scene on screen. A click explains where to change it in OBS."""
+    if not snapshot.program_scene:
+        return [_row("scene_strip", [])]
+    return [
+        _row("scene_strip", ["scene_current"]),
+        _text("scene_current_label", snapshot.program_scene),
+        {
+            "id": "scene_current",
+            "component": "Button",
+            "child": "scene_current_label",
+            "action": {"event": {"name": "read_scene", "context": {"note": SCENE_HELP}}},
+        },
+    ]
 
 
 def _path_card(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
