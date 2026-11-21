@@ -74,6 +74,22 @@ def test_a_failed_model_call_falls_back_to_the_detector():
     assert "house mix is open" in guide.reply
 
 
+def test_a_health_check_is_answered_when_obs_is_down():
+    from church_av.models import Snapshot
+
+    guide = explain(
+        Snapshot(connected=False, error="timed out"),
+        _book(),
+        [],
+        question="suggest steps to do a health check before streaming starts.",
+        api_key="",
+    )
+    assert guide.source == "detector"
+    assert "Audio Input Capture" in guide.reply
+    assert "Wall Cam" in guide.reply
+    assert "Cannot read the service machine" not in guide.reply
+
+
 def test_instruction_keeps_the_agent_from_driving_the_stream():
     assert "Do not start or stop the stream" in INSTRUCTION
     assert "You cannot change OBS" in INSTRUCTION

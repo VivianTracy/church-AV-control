@@ -82,15 +82,15 @@ def explain(
     completer=None,
 ) -> Guide:
     """Explain the reading. Without an API key, or if the model call fails, use the detector text."""
-    local = local_reply(snapshot, runbook, faults)
-    if not api_key.strip():
+    local = local_reply(snapshot, runbook, faults, question)
+    if not api_key.strip() or (question and _asks_for_a_check(question) and not snapshot.connected):
         return Guide(local, "detector")
     tools = build_tools(snapshot, runbook, faults)
     try:
         if completer is not None:
-            reply = completer(_prompt(question), tools)
+            reply = completer(_prompt(question, snapshot), tools)
         else:
-            reply = _ask_adk(tools, _prompt(question))
+            reply = _ask_adk(tools, _prompt(question, snapshot))
     except Exception:
         return Guide(local, "detector")
     reply = (reply or "").strip()
@@ -99,7 +99,14 @@ def explain(
     return Guide(reply, "adk")
 
 
-def local_reply(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> str:
+def local_reply(
+    snapshot: Snapshot,
+    runbook: Runbook,
+    faults: list[Fault],
+    question: str | None = None,
+) -> str:
+    if question and _asks_for_a_check(question):
+        return _health_check(snapshot, runbook)
     if not faults:
         return _calm_status(snapshot, runbook)
     blocks = []
@@ -126,13 +133,36 @@ def _calm_status(snapshot: Snapshot, runbook: Runbook) -> str:
     return f"On screen: {scene}{picture}. YouTube output is {stream}. {mix.capitalize()}."
 
 
-def _prompt(question: str | None) -> str:
+def _asks_for_a_check(question: str) -> bool:
+    text = question.lower()
+    return any(phrase in text for phrase in ("health", "before streaming", "before the stream", "checklist"))
+
+
+def _health_check(snapshot: Snapshot, runbook: Runbook) -> str:
+    mix = runbook.house_mix
+    muted = [source.obs_name for source in runbook.sources if "muted on purpose" in source.audio.lower()]
+    muted_text = ", ".join(muted) if muted else "the camera and slide sources"
+    where = "The service PC cannot be read from here, so do this on that PC. " if not snapshot.connected else ""
+    return (
+        f"{where}Before Start Streaming, confirm OBS is open and the WebSocket server is enabled. "
+        f"In the Audio Mixer, {mix.obs_name} stays unmuted with the fader near {mix.target_db:.0f} dB, "
+        f"and {muted_text} stay muted. "
+        "On the Behringer, bring up the main mix and the mics you need. "
+        "Those channel names are not written down yet, so read the labels on the board. "
+        "Start the stream on the service PC. This booth will not start it."
+    )
+
+
+def _prompt(question: str | None, snapshot: Snapshot) -> str:
     if question:
-        return (
-            "The operator asked: "
-            + question.strip()
-            + " Use the tools. Reply in two or three sentences and name where to adjust."
-        )
+        asked = "The operator asked: " + question.strip() + " "
+        if not snapshot.connected:
+            return (
+                asked
+                + "OBS cannot be read right now. Answer from the runbook in two or three sentences. "
+                + "Do not spend the reply on the disconnect error."
+            )
+        return asked + "Use the tools. Reply in two or three sentences and name where to adjust."
     return (
         "A detector fault may be open. Use the tools. "
         "Reply in two or three sentences a volunteer can follow, and name where to adjust."
@@ -177,6 +207,6 @@ def _ask_adk(tools: list, prompt: str) -> str:
                 await close()
 
     try:
-        return asyncio.run(asyncio.wait_for(_run(), timeout=8))
+        return asyncio.run(asyncio.wait_for(_run(), timeout=30))
     except TimeoutError as exc:
         raise RuntimeError("The guide took too long") from exc
