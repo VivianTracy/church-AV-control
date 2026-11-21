@@ -1,0 +1,51 @@
+church: Church stream
+service_name: Sunday service
+# Turn this on when the service should already be live on YouTube.
+expect_stream_live: false
+
+house_mix:
+  obs_name: Audio Input Capture
+  windows_device: Microphone (X-USB)
+  role: >
+    Behringer mixer USB output. Pulpit, handheld, and playback are mixed
+    on the board before they reach OBS, so this is one fader, not one mic.
+  target_db: -2
+  warn_below_db: -20
+
+sources:
+  - obs_name: Wall Cam
+    role: Stage camera, USB capture card
+    audio: muted on purpose
+  - obs_name: Mobile Cam
+    role: Mobile camera, USB capture card
+    audio: muted on purpose
+  - obs_name: Slide PC
+    role: Lyrics and slides computer, USB capture card
+    audio: muted on purpose
+  - obs_name: Display Capture
+    role: Service PC monitor (Acer)
+    audio: none
+
+scenes:
+  - name: 1-Stage Only
+    picture: Wall Cam filling the frame
+  - name: 2-Slide Only
+    picture: Slide PC filling the frame
+  - name: 3-Stage 50/Slide 50
+    picture: Wall Cam and Slide PC, split evenly
+  - name: 4-Stage 100/Slide 30
+    picture: Wall Cam full, Slide PC small
+  - name: 5-Stage 30/Slide 70
+    picture: Wall Cam small, Slide PC larger
+  - name: 6-Stage 30/Slide 100
+    picture: Slide PC full, Wall Cam small
+  - name: 7-Mobile Cam 50/Slide 50
+    picture: Mobile Cam and Slide PC, split evenly
+  - name: 8-Mobile Cam Only
+    picture: Mobile Cam filling the frame
+  - name: 9-Studio (Wall Cam + Mobile Cam)
+    picture: Wall Cam and Mobile Cam together
+  - name: 10-Acer Monitor
+    picture: The service PC's own screen
+  - name: 11-Acer 70 + Slide 30
+    picture: The service PC's screen large, Slide PC small
