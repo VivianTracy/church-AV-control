@@ -16,7 +16,7 @@ Answer the question the operator asked.
 The facts in the message are the only live readings and church names you have.
 Do not recite a general checklist unless the operator asked for one.
 Reply in the language the operator wrote in. An English question gets an English reply. A Chinese question gets a Chinese reply.
-The path box draws the signal path. It lists only channels that are unmuted and above the noise floor. Explain that path. Do not draw it as text, and do not list quiet or muted channels as if they were in the house mix.
+The path box draws the signal path. It lists only channels that are unmuted and above the noise floor. Explain that path. Do not draw it as text, and do not list quiet or muted channels as if they were in the Audio Mixer.
 When no question was asked and you are explaining a detector fault, write the whole reply in Chinese.
 OBS receives one combined X-USB feed, Audio Input Capture. Individual mics are not separate OBS inputs.
 The Behringer X32 may be monitored separately over OSC. Those readings are channel, bus, and output meters.
@@ -27,10 +27,10 @@ If a board channel name is empty, ask what the knob is called.
 If the strip is empty, ask the operator to enter the mapping.
 When the OBS input is quiet, say which stage failed: the mic channel, the stream bus, the X32 USB output, or the OBS input.
 A quiet mic is normal while the OBS meter is moving.
-A bus or matrix can be a dedicated stream mix. Until one is assigned, YouTube uses the house mix, still as one X-USB input.
+A bus or matrix can be a dedicated stream mix. Until one is assigned, YouTube uses the Audio Mixer, still as one X-USB input.
 The ADJ PC-100A, amplifiers, wireless receivers, and lighting controller have no reading here.
 Do not start or stop the stream, and do not click Go Live.
-Do not mute the house mix, and do not suggest a fader above 0 dB.
+Do not mute the Audio Mixer, and do not suggest a fader above 0 dB.
 You diagnose and guide. You cannot change OBS or the X32.
 A deterministic policy decides which operator-approved changes are allowed.
 You cannot change OBS. The operator taps Apply for a change the policy allows.
@@ -54,7 +54,7 @@ def build_tools(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> li
         return {"status": "success", "snapshot": asdict(snapshot)}
 
     def get_runbook() -> dict:
-        """Return the church runbook: house mix, sources, and scenes.
+        """Return the church runbook: Audio Mixer, sources, and scenes.
 
         This does not change OBS. This does not change the X32.
         """
@@ -144,12 +144,12 @@ def _calm_status(snapshot: Snapshot, runbook: Runbook) -> str:
     stream = "live" if snapshot.streaming else "stopped"
     house = snapshot.input_named(runbook.house_mix.obs_name)
     if house is None:
-        mix = f"{runbook.house_mix.obs_name} is missing"
+        mix = f"{runbook.house_mix.obs_name} is missing."
     elif house.muted:
-        mix = "the house mix is muted"
+        mix = "The Audio Mixer is muted."
     else:
-        mix = "the house mix is open"
-    return f"On screen: {scene}{picture}. YouTube output is {stream}. {mix.capitalize()}."
+        mix = "The Audio Mixer is open."
+    return f"On screen: {scene}{picture}. YouTube output is {stream}. {mix}"
 
 
 def _asks_for_a_check(question: str) -> bool:
@@ -190,7 +190,7 @@ def _diagnosis_line(fault: Fault, runbook: Runbook) -> str:
         ),
         "house_mix_missing": f"OBS 里没有名为 {mix} 的输入。请找到 Microphone (X-USB)，或改手册里的名称。",
         "house_mix_muted": (
-            f"房间混音被静音了。在 OBS 音频混音器里，点 {mix} 下面的喇叭，取消静音。"
+            f"音频混音器被静音了。在 OBS 音频混音器里，点 {mix} 下面的喇叭，取消静音。"
             "Wall Cam、Mobile Cam、Slide PC 保持静音。"
         ),
         "house_mix_fader_low": (
@@ -199,7 +199,7 @@ def _diagnosis_line(fault: Fault, runbook: Runbook) -> str:
         ),
         "house_mix_clipping": f"声音削波了。在 {board} 上把主输出拉低一点。OBS 里 {mix} 的推子保持不动。",
         "house_mix_silent": (
-            f"房间混音没有声音。检查 {board} 的 USB 输出和主输出没有被静音，"
+            f"音频混音器没有声音。检查 {board} 的 USB 输出和主输出没有被静音，"
             f"并且 OBS 里 {mix} 保持取消静音。"
         ),
         "path_mic_dark": (
@@ -314,7 +314,7 @@ def _facts(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> str:
     mix = runbook.house_mix
     parts = [
         (
-            f"House mix in OBS: {mix.obs_name}, Windows device {mix.windows_device}. "
+            f"Audio Mixer in OBS: {mix.obs_name}, Windows device {mix.windows_device}. "
             f"This is one combined X-USB feed, target {mix.target_db:.0f} dB."
         ),
         f"Mixer: {runbook.board_name}. Monitored separately over OSC, not as extra OBS inputs.",
@@ -330,16 +330,16 @@ def _facts(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> str:
     if snapshot.board is not None and snapshot.board.connected:
         if reaching:
             names = ", ".join(label for _strip, label in reaching)
-            parts.append(f"Reaching the house mix now: {names}.")
+            parts.append(f"Reaching the Audio Mixer now: {names}.")
         else:
-            parts.append("No channel is reaching the house mix.")
+            parts.append("No channel is reaching the Audio Mixer.")
     else:
         parts.append("The X32 is not connected, so active channels are unknown.")
     unmapped = [item.role for item in runbook.channels if item.kind == "channel" and not item.strip]
     if unmapped:
         parts.append("Still unmapped: " + ", ".join(unmapped) + ".")
     if runbook.stream_mix is not None and not runbook.stream_mix.strip:
-        parts.append("No dedicated stream bus is assigned. YouTube uses the house mix.")
+        parts.append("No dedicated stream bus is assigned. YouTube uses the Audio Mixer.")
     elif runbook.stream_mix is not None and runbook.stream_mix.strip.isdigit():
         parts.append(f"Stream mix is {runbook.stream_mix.kind} {int(runbook.stream_mix.strip)}.")
     if runbook.rack:

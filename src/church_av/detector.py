@@ -11,7 +11,7 @@ _PATH_TITLES = {
     "path_stream_dark": "The stream bus is quiet",
     "path_usb_dark": "The X32 USB send is quiet",
     "path_obs_dark": "The mixer audio isn't reaching OBS",
-    "house_mix_silent": "House mix is silent",
+    "house_mix_silent": "Audio Mixer is silent",
 }
 
 
@@ -66,7 +66,7 @@ class Detector:
                 Fault(
                     id="house_mix_muted",
                     severity="critical",
-                    title="House mix is muted in OBS",
+                    title="Audio Mixer is muted",
                     evidence=(
                         f"{mix.obs_name} ({mix.windows_device}) is muted. "
                         "Viewers would hear silence even if the board meters are moving."
@@ -88,7 +88,7 @@ class Detector:
                 Fault(
                     id="house_mix_fader_low",
                     severity="warning",
-                    title="House mix fader is down in OBS",
+                    title="Audio Mixer fader is down",
                     evidence=(
                         f"{mix.obs_name} is at {house.volume_db:.0f} dB. "
                         f"The usual position is about {mix.target_db:.0f} dB."
@@ -118,7 +118,7 @@ class Detector:
                     Fault(
                         id="house_mix_clipping",
                         severity="warning",
-                        title="House mix is clipping",
+                        title="Audio Mixer is clipping",
                         evidence=f"The X-USB meter is peaking near full scale ({house.meter_db:.1f} dB).",
                         steps=[
                             runbook.board_instruction(
@@ -206,7 +206,7 @@ def _silence_fault(snapshot: Snapshot, runbook: Runbook) -> Fault:
         return Fault(
             id=fault_id,
             severity="critical",
-            title=_PATH_TITLES.get(fault_id, "House mix is silent"),
+            title=_PATH_TITLES.get(fault_id, "Audio Mixer is silent"),
             evidence=report.conclusion,
             steps=[
                 *[stage.detail for stage in report.stages],
@@ -216,7 +216,7 @@ def _silence_fault(snapshot: Snapshot, runbook: Runbook) -> Fault:
     return Fault(
         id="house_mix_silent",
         severity="critical",
-        title="House mix is silent",
+        title="Audio Mixer is silent",
         evidence="Audio Input Capture is open, and the X-USB meter has been at the noise floor.",
         steps=[
             runbook.board_instruction(

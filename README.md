@@ -8,7 +8,7 @@ OBS WebSocket on the service PC (`10.1.10.167:4455`) reports:
 
 - the program scene
 - whether the YouTube output is live
-- the one house-mix input, `Audio Input Capture`, which Windows calls Microphone (X-USB)
+- the Audio Mixer input, `Audio Input Capture`, which Windows calls Microphone (X-USB)
 
 That device is one combined Behringer X32 mix. Individual mics are not separate OBS inputs. Wall Cam, Mobile Cam, and Slide PC stay muted on purpose.
 
@@ -46,6 +46,6 @@ python -m church_av
 
 Open http://127.0.0.1:8765
 
-`ALLOW_APPLY` stays `false`. The booth suggests the OBS click and does not change the service PC. Set it to `true` only when an Apply button should be allowed to unmute the house mix. Apply never writes to the X32. The policy decides which operator-approved OBS changes are allowed. Mapping a strip edits `runbook/church.yaml` only.
+`ALLOW_APPLY` stays `false`. The booth suggests the OBS click and does not change the service PC. Set it to `true` only when an Apply button should be allowed to unmute the Audio Mixer. Apply never writes to the X32. The policy decides which operator-approved OBS changes are allowed. Mapping a strip edits `runbook/church.yaml` only.
 
 Set `expect_stream_live: true` in `runbook/church.yaml` when a Sunday service should already be on YouTube. Until then, a stopped stream is normal.

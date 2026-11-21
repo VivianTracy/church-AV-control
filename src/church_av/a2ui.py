@@ -89,7 +89,7 @@ def _status(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
         _card("mix_card", "mix_body"),
         _column("mix_body", ["mix_icon", "mix_kicker", "mix_value", "mix_detail", "meter"]),
         _icon("mix_icon", mix_icon),
-        _text("mix_kicker", "House mix", "caption"),
+        _text("mix_kicker", "Audio Mixer", "caption"),
         _text("mix_value", mix_value),
         _text("mix_detail", mix_detail, "caption"),
         _row("meter", ["meter_caption"]),
@@ -152,7 +152,7 @@ def _guide_card(reply: str, asked: str, faults: list[Fault]) -> list[dict]:
 
 
 def _setup_diagram(snapshot: Snapshot, runbook: Runbook) -> dict:
-    """The path currently in use. Channel boxes are only the ones reaching the house mix."""
+    """The path currently in use. Channel boxes are only the ones reaching the Audio Mixer."""
     usb_detail = "sends Main" if (runbook.usb_source or "main") == "main" else f"sends {runbook.usb_source}"
     audio = [
         _active_channel_nodes(snapshot, runbook),
@@ -184,7 +184,7 @@ def _active_channel_nodes(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
                 "channels-waiting",
                 "Channels",
                 "needs the X32",
-                "The mixer is not on the network, so this box cannot list which channels are reaching the house mix.",
+                "The mixer is not on the network, so this box cannot list which channels are reaching the Audio Mixer.",
             )
         ]
     reaching = house_channels(board, runbook)
@@ -193,8 +193,8 @@ def _active_channel_nodes(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
             _node(
                 "channels-quiet",
                 "No active channel",
-                "house mix",
-                "Every channel is muted or at the noise floor, so nothing is reaching the house mix.",
+                "Audio Mixer",
+                "Every channel is muted or at the noise floor, so nothing is reaching the Audio Mixer.",
             )
         ]
     nodes = []
@@ -209,7 +209,7 @@ def _active_channel_nodes(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
                 f"ch-{strip.index}",
                 label,
                 meter,
-                f"{label} is {state} at {meter} and is reaching the house mix.",
+                f"{label} is {state} at {meter} and is reaching the Audio Mixer.",
             )
         )
     return nodes
@@ -220,7 +220,12 @@ def _mix_node(runbook: Runbook) -> dict:
     if mix is not None and mix.strip.isdigit():
         title = f"{mix.kind} {int(mix.strip)}"
         return _node("mix", title, "stream mix", f"{title} is the stream mix. YouTube takes this instead of Main.")
-    return _node("mix", "Main L/R", "house mix", "Main L/R is the house mix. The channels above are the ones reaching it.")
+    return _node(
+        "mix",
+        "Main L/R",
+        "Audio Mixer",
+        "Main L/R feeds the Audio Mixer. The channels above are the ones reaching it.",
+    )
 
 
 def _obs_node(snapshot: Snapshot, runbook: Runbook) -> dict:
@@ -294,7 +299,7 @@ def _setup_aside(snapshot: Snapshot, runbook: Runbook) -> list[str]:
         lines.append("Muted channels and channels at the noise floor are left off.")
     mix = runbook.stream_mix
     if mix is not None and not mix.strip.isdigit():
-        lines.append("No separate stream mix. YouTube uses the house mix.")
+        lines.append("No separate stream mix. YouTube uses the Audio Mixer.")
     if runbook.rack:
         lines.append("Not monitored: " + ", ".join(item.name for item in runbook.rack) + ".")
     return lines

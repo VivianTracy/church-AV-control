@@ -89,7 +89,7 @@ def _mute(proposal: Action, runbook: Runbook) -> Decision:
             f"Only {mix_name} can be changed. Camera inputs stay muted.",
         )
     if proposal.muted is not False:
-        return Decision(False, "Muting the house mix from here is disabled.")
+        return Decision(False, "Muting the Audio Mixer from here is disabled.")
     return Decision(True, proposal.summary, proposal)
 
 
@@ -100,11 +100,11 @@ def _volume(proposal: Action, snapshot: Snapshot, runbook: Runbook) -> Decision:
     if proposal.volume_db is None:
         return Decision(False, "A fader move needs a level in dB.")
     if proposal.volume_db > MAX_FADER_DB:
-        return Decision(False, "The house-mix fader cannot go above 0 dB.")
+        return Decision(False, "The Audio Mixer fader cannot go above 0 dB.")
 
     house = snapshot.input_named(mix_name)
     if house is None or house.volume_db is None:
-        return Decision(False, "The house-mix fader level is not in this reading.")
+        return Decision(False, "The Audio Mixer fader level is not in this reading.")
 
     delta = proposal.volume_db - house.volume_db
     if abs(delta) <= MAX_FADER_STEP_DB:
@@ -112,9 +112,9 @@ def _volume(proposal: Action, snapshot: Snapshot, runbook: Runbook) -> Decision:
     else:
         target = house.volume_db + (MAX_FADER_STEP_DB if delta > 0 else -MAX_FADER_STEP_DB)
     if target > MAX_FADER_DB:
-        return Decision(False, "The house-mix fader cannot go above 0 dB.")
+        return Decision(False, "The Audio Mixer fader cannot go above 0 dB.")
     if abs(target - house.volume_db) < 0.05:
-        return Decision(False, "The house-mix fader is already at that level.")
+        return Decision(False, "The Audio Mixer fader is already at that level.")
 
     action = Action(
         kind="set_input_volume",

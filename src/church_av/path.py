@@ -175,9 +175,9 @@ def _stream_stage(board: BoardReading, runbook: Runbook) -> Stage:
         return Stage(
             "stream",
             "skipped",
-            "No stream bus is assigned. YouTube still uses the house mix on X-USB.",
+            "No stream bus is assigned. YouTube still uses the Audio Mixer on X-USB.",
             "Stream",
-            "house mix",
+            "Audio Mixer",
         )
     number = runbook.resolved_strip(item.id)
     strip = _find(board, item.kind, number)

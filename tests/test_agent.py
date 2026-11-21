@@ -71,7 +71,7 @@ def test_a_failed_model_call_falls_back_to_the_detector():
 
     guide = explain(snapshot, _book(), faults, api_key="test-key", completer=completer)
     assert guide.source == "detector"
-    assert "house mix is open" in guide.reply
+    assert "Audio Mixer is open" in guide.reply
 
 
 def test_a_health_check_is_answered_when_obs_is_down():

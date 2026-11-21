@@ -204,7 +204,7 @@ def test_path_box_lists_only_channels_reaching_the_house_mix():
     assert "Wall Cam" in picture
     assert "Slide PC" in picture
     chosen = next(box for stage in diagram["lanes"][0]["stages"] for box in stage if box["id"] == "ch-2")
-    assert chosen["note"] == "2 Worship is open at -18 dB and is reaching the house mix."
+    assert chosen["note"] == "2 Worship is open at -18 dB and is reaching the Audio Mixer."
     assert "left off" in " ".join(diagram["aside"])
 
 

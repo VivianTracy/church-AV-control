@@ -44,7 +44,7 @@ def test_house_mix_mute_is_refused():
         book(),
     )
     assert decision.allowed is False
-    assert "Muting the house mix" in decision.reason
+    assert "Muting the Audio Mixer" in decision.reason
 
 
 def test_fader_above_zero_is_refused():

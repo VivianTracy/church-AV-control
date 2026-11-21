@@ -4,7 +4,7 @@ The operator computer runs the booth. The service PC runs OBS and sends YouTube.
 
 ## Two connections
 
-OBS on the service PC receives one combined feed. Windows calls it Microphone (X-USB). That is the only audio input the stream uses. Pulpit, handheld, playback, and the house mix are not separate OBS sources.
+OBS on the service PC receives one combined feed. Windows calls it Microphone (X-USB). That is the only audio input the stream uses. Pulpit, handheld, and playback are not separate OBS sources. In OBS this input sits in the Audio Mixer.
 
 The Behringer X32 may be monitored separately over OSC (UDP 10023). `X32Reader` sits beside `ObsReader` and is read-only. It collects channel, bus, matrix, and main-output meters, plus scribble names. It never sends a fader, a mute, or a name. An empty `X32_HOST` leaves this connection off. OBS polling still runs.
 
@@ -25,7 +25,7 @@ A quiet mic means the mic is not reaching the mixer. A hot mic and a quiet strea
 
 ## Stream mix
 
-The room can stay on Main L/R. YouTube can take a bus or a matrix instead, and that mix is what the USB card sends. Until `stream_mix.strip` is set, the stream uses the house mix, and OBS still sees one X-USB input. Assigning that bus is the useful mixer change for the stream. The booth will not route it. The operator does that on the console, then records the strip in the runbook.
+The room can stay on Main L/R. YouTube can take a bus or a matrix instead, and that mix is what the USB card sends. Until `stream_mix.strip` is set, the stream uses the Audio Mixer, and OBS still sees one X-USB input. Assigning that bus is the useful mixer change for the stream. The booth will not route it. The operator does that on the console, then records the strip in the runbook.
 
 ## Names
 
@@ -39,8 +39,8 @@ A policy module is the only writer. The agent may name an action. The policy dro
 
 | Adjustment | Where | Limit |
 |---|---|---|
-| Unmute Audio Input Capture | OBS Audio Mixer | House mix only. Camera inputs stay muted. |
-| Nudge the house-mix fader | OBS Audio Mixer | At most 3 dB per tap, never above 0 dB, never a mute. |
+| Unmute Audio Input Capture | OBS Audio Mixer | That input only. Camera inputs stay muted. |
+| Nudge the Audio Mixer fader | OBS Audio Mixer | At most 3 dB per tap, never above 0 dB, never a mute. |
 | Change the program scene | OBS Scenes | Only after a chat confirmation, and only to a scene name OBS just reported. |
 | Map a runbook role to a strip | runbook/church.yaml | Operator action only. A channel, bus, or matrix number. Not a mixer write. |
 | One mic, the stream bus, or the main mix | Behringer X32 | Shown on a guide card. OSC does not move the fader. |
@@ -55,17 +55,17 @@ The ADJ PC-100A has physical power switches. The amplifiers, wireless receivers,
 
 One A2UI surface, basic catalog:
 
-- Status, already built: scene, YouTube output, house-mix line, fault cards. When OSC is connected, the house-mix line also shows the mic, stream, USB, and OBS stages.
+- Status, already built: scene, YouTube output, Audio Mixer line, fault cards. When OSC is connected, the Audio Mixer line also shows the mic, stream, USB, and OBS stages.
 - Chat: a `TextField` and an Ask `Button`. The reply is the model's words, as long as the question needs.
-- Path box: the current route. Channel boxes are only the ones reaching the house mix, and only after the X32 answers. Selecting a box reads that step. The model does not draw the path.
+- Path box: the current route. Channel boxes are only the ones reaching the Audio Mixer, and only after the X32 answers. Selecting a box reads that step. The model does not draw the path.
 - Guide card: the place in large type (`OBS Audio Mixer` or `Behringer X32`), the control name (`Audio Input Capture` or the console name), then the steps. An Apply button is included only when the policy accepted an action and `ALLOW_APPLY` is true.
 
 An unknown board channel becomes a question on that card. The model does not invent a knob name.
 
 ## Build order
 
-1. Save demo snapshots: healthy, muted house mix, low fader, live stream, dropped frames.
-2. Add `policy.py` and tests that refuse stream start, a house-mix mute, and a fader move above 0 dB.
+1. Save demo snapshots: healthy, muted Audio Mixer, low fader, live stream, dropped frames.
+2. Add `policy.py` and tests that refuse stream start, an Audio Mixer mute, and a fader move above 0 dB.
 3. Add an ADK agent whose tools are read-only: snapshot, runbook, open faults. A missing `GOOGLE_API_KEY` uses the detector text.
 4. Add the chat field and the guide card to the A2UI page. Ask about a muted mix and see the speaker-icon steps.
 5. Add a board-channel section to `runbook/church.yaml`. Empty names ask the operator instead of guessing.
