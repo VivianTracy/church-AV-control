@@ -90,11 +90,41 @@ def test_a_health_check_is_answered_when_obs_is_down():
     assert "Cannot read the service machine" not in guide.reply
 
 
+def test_an_improvement_question_is_answered_in_chinese_when_obs_is_down():
+    from church_av.models import Snapshot
+
+    snapshot = Snapshot(connected=False, error="timed out")
+    faults = Detector().detect(snapshot, _book())
+
+    called = False
+
+    def completer(prompt, tools):
+        nonlocal called
+        called = True
+        raise RuntimeError("503")
+
+    guide = explain(
+        snapshot,
+        _book(),
+        faults,
+        question="suggest ways to improve streaming? answer in Chinese",
+        api_key="test-key",
+        completer=completer,
+    )
+    assert called is False
+    assert guide.source == "detector"
+    assert "服务电脑" in guide.reply
+    assert "Audio Input Capture" in guide.reply
+    assert "Behringer X32" in guide.reply
+    assert "Cannot read the service machine" not in guide.reply
+
+
 def test_instruction_keeps_the_agent_from_driving_the_stream():
     assert "Do not start or stop the stream" in INSTRUCTION
     assert "You cannot change OBS" in INSTRUCTION
     assert "above 0 dB" in INSTRUCTION
     assert "ask what the knob is called" in INSTRUCTION
+    assert "If they ask for Chinese, write the whole reply in Chinese." in INSTRUCTION
 
 
 def test_installed_agent_keeps_the_read_only_tools():
