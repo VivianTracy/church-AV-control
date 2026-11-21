@@ -13,6 +13,27 @@ class InputReading:
 
 
 @dataclass
+class StripReading:
+    """One X32 channel, bus, matrix, or main output. OSC only. Not an OBS input."""
+
+    kind: str
+    index: int
+    name: str = ""
+    meter_db: float | None = None
+    on: bool | None = None
+
+
+@dataclass
+class BoardReading:
+    connected: bool
+    error: str | None = None
+    channels: list[StripReading] = field(default_factory=list)
+    buses: list[StripReading] = field(default_factory=list)
+    matrices: list[StripReading] = field(default_factory=list)
+    main: list[StripReading] = field(default_factory=list)
+
+
+@dataclass
 class Snapshot:
     connected: bool
     error: str | None = None
@@ -26,6 +47,7 @@ class Snapshot:
     output_total_frames: int = 0
     cpu_percent: float | None = None
     inputs: list[InputReading] = field(default_factory=list)
+    board: BoardReading | None = None
 
     def input_named(self, name: str) -> InputReading | None:
         for item in self.inputs:

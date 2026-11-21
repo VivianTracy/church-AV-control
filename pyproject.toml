@@ -1,7 +1,7 @@
 [project]
 name = "church-av"
 version = "0.1.0"
-description = "Booth agent that reads the church service PC over OBS WebSocket."
+description = "Booth agent that reads OBS on the service PC and, optionally, the X32 over OSC."
 requires-python = ">=3.11"
 dependencies = [
   "obsws-python>=1.8",

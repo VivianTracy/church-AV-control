@@ -11,6 +11,18 @@ def book():
     return load_runbook(ROOT / "runbook" / "church.yaml")
 
 
+def test_x32_fader_move_is_refused():
+    snapshot = load_fixture("healthy")[0]
+    decision = decide(
+        Action(kind="x32_set_fader", summary="Raise pulpit", input_name="20"),
+        snapshot,
+        book(),
+    )
+    assert decision.allowed is False
+    assert decision.action is None
+    assert "OSC" in decision.reason
+
+
 def test_stream_start_is_refused():
     snapshot = load_fixture("healthy")[0]
     decision = decide(Action(kind="start_stream", summary="Start streaming"), snapshot, book())

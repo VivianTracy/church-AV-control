@@ -36,6 +36,8 @@ class Settings:
     runbook_path: Path
     root: Path
     google_api_key: str = ""
+    x32_host: str = ""
+    x32_port: int = 10023
 
     @classmethod
     def load(cls, root: Path | None = None) -> "Settings":
@@ -52,4 +54,6 @@ class Settings:
             runbook_path=root / "runbook" / "church.yaml",
             root=root,
             google_api_key=os.environ.get("GOOGLE_API_KEY", "").strip(),
+            x32_host=os.environ.get("X32_HOST", "").strip(),
+            x32_port=int(os.environ.get("X32_PORT", "10023")),
         )

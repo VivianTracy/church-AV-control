@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from church_av.models import Fault, Snapshot
+from church_av.path import describe_path
 from church_av.runbook import Runbook
 
 MODEL = "gemini-3.5-flash"
@@ -17,12 +18,21 @@ Do not recite a general checklist unless the operator asked for one.
 Reply in two or three sentences a volunteer can follow from across the room.
 Reply in the language the operator wrote in. An English question gets an English reply. A Chinese question gets a Chinese reply.
 When no question was asked and you are explaining a detector fault, write the whole reply in Chinese.
+OBS receives one combined X-USB feed, Audio Input Capture. Individual mics are not separate OBS inputs.
+The Behringer X32 may be monitored separately over OSC. Those readings are channel, bus, and output meters.
 Name the OBS control, such as the Audio Mixer speaker for Audio Input Capture,
-or the Behringer X32 channel when the runbook names it.
-Do not invent a board channel name.
+or the Behringer X32 channel when the runbook or the console names it.
+Do not invent a board channel name or a strip number.
 If a board channel name is empty, ask what the knob is called.
+If the strip is empty, ask the operator to enter the mapping.
+When the OBS input is quiet, say which stage failed: the mic channel, the stream bus, the X32 USB output, or the OBS input.
+A quiet mic is normal while the OBS meter is moving.
+A bus or matrix can be a dedicated stream mix. Until one is assigned, YouTube uses the house mix, still as one X-USB input.
+The ADJ PC-100A, amplifiers, wireless receivers, and lighting controller have no reading here.
 Do not start or stop the stream, and do not click Go Live.
 Do not mute the house mix, and do not suggest a fader above 0 dB.
+You diagnose and guide. You cannot change OBS or the X32.
+A deterministic policy decides which operator-approved changes are allowed.
 You cannot change OBS. The operator taps Apply for a change the policy allows.
 """.strip()
 
@@ -39,21 +49,21 @@ def build_tools(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> li
     def get_snapshot() -> dict:
         """Return the latest OBS reading: scene, stream, and input levels.
 
-        This does not change OBS.
+        This does not change OBS. This does not change the X32.
         """
         return {"status": "success", "snapshot": asdict(snapshot)}
 
     def get_runbook() -> dict:
         """Return the church runbook: house mix, sources, and scenes.
 
-        This does not change OBS.
+        This does not change OBS. This does not change the X32.
         """
         return {"status": "success", "runbook": asdict(runbook)}
 
     def list_open_faults() -> dict:
         """Return the faults the detector currently has open.
 
-        Do not invent a fault that is not in this list. This does not change OBS.
+        Do not invent a fault that is not in this list. This does not change OBS. This does not change the X32.
         """
         return {
             "status": "success",
@@ -192,6 +202,20 @@ def _diagnosis_line(fault: Fault, runbook: Runbook) -> str:
             f"房间混音没有声音。检查 {board} 的 USB 输出和主输出没有被静音，"
             f"并且 OBS 里 {mix} 保持取消静音。"
         ),
+        "path_mic_dark": (
+            f"话筒没有进到 {board}。先看已映射的话筒通道、推子和静音。这还不是 OBS 的问题。"
+        ),
+        "path_stream_dark": (
+            f"话筒已经进了 {board}，但直播总线是静的。检查那路 bus 的发送和推子。"
+            "OBS 里的 X-USB 仍然是一路总信号。"
+        ),
+        "path_usb_dark": (
+            f"调音台前面的电平是有的，但 USB 输出是静的。检查 {board} 送到电脑的那路输出。"
+        ),
+        "path_obs_dark": (
+            f"调音台的 USB 输出是有电平的，OBS 没有收到。看音频混音器里的 {mix}，"
+            "确认没有静音，设备仍是 Microphone (X-USB)。"
+        ),
         "stream_reconnecting": "直播正在重新连接。先等 OBS 自己连上，不要点停止。",
         "stream_stopped": "现在应该已经在直播，但 OBS 的输出是停的。请在服务电脑上点 Start Streaming。这个控制台不会替你开播。",
         "frames_skipped": "OBS 丢帧了。先关掉服务电脑上别的程序。直播中不要改编码器、码率或分辨率。",
@@ -203,6 +227,41 @@ def _muted_names(runbook: Runbook) -> list[str]:
     return [source.obs_name for source in runbook.sources if "muted on purpose" in source.audio.lower()]
 
 
+def _board_health(runbook: Runbook, chinese: bool = False) -> str:
+    mapped = [
+        f"{item.name} is channel {int(item.strip)}"
+        for item in runbook.channels
+        if item.kind == "channel" and item.known and item.strip.isdigit()
+    ]
+    unmapped = [item.role for item in runbook.channels if item.kind == "channel" and not item.strip]
+    if chinese:
+        mapped_text = f"{'，'.join(mapped)}。" if mapped else ""
+        if unmapped:
+            return f"{mapped_text}{'、'.join(unmapped)} 还没有对应通道，需要填写编号。"
+        return mapped_text or "通道已经对应好了。"
+    mapped_text = f"{', '.join(mapped)}. " if mapped else ""
+    if unmapped:
+        unmapped_text = f"{' and '.join(unmapped)} still need a strip number."
+    else:
+        unmapped_text = "Mapped channels are ready."
+    return f"{mapped_text}{unmapped_text} Console scribbles are used when the channel is named."
+
+
+def _scribble_fact(runbook: Runbook) -> str:
+    labels = [item for item in runbook.labels if item.name.strip()]
+    if not labels:
+        return ""
+    worship = [item.strip for item in labels if item.name == "Worship"]
+    rest = [item for item in labels if item.name != "Worship"]
+    parts: list[str] = []
+    if len(worship) > 1 and worship == list(range(worship[0], worship[-1] + 1)):
+        parts.append(f"{worship[0]}-{worship[-1]} Worship")
+    else:
+        parts.extend(f"{item.strip} {item.name}" for item in labels if item.name == "Worship")
+    parts.extend(f"{item.strip} {item.name}" for item in rest)
+    return "Console scribbles: " + ", ".join(parts) + "."
+
+
 def _health_check(snapshot: Snapshot, runbook: Runbook, chinese: bool = False) -> str:
     mix = runbook.house_mix
     muted = _muted_names(runbook)
@@ -212,7 +271,7 @@ def _health_check(snapshot: Snapshot, runbook: Runbook, chinese: bool = False) -
         return (
             f"{where}开播前确认 OBS 已打开，并且 WebSocket 服务器已启用。"
             f"在音频混音器里，{mix.obs_name} 保持取消静音，推子靠近 {mix.target_db:.0f} dB，{muted_text} 保持静音。"
-            f"在 {runbook.board_name} 上把主输出和要用的话筒推起来。通道名称还没写入手册，请看调音台面板上的标签。"
+            f"在 {runbook.board_name} 上把主输出和要用的话筒推起来。{_board_health(runbook, chinese=True)}"
             "开播请在服务电脑上点 Start Streaming。这个控制台不会替你开播。"
         )
     muted_text = ", ".join(muted) if muted else "the camera and slide sources"
@@ -222,7 +281,7 @@ def _health_check(snapshot: Snapshot, runbook: Runbook, chinese: bool = False) -
         f"In the Audio Mixer, {mix.obs_name} stays unmuted with the fader near {mix.target_db:.0f} dB, "
         f"and {muted_text} stay muted. "
         f"On the {runbook.board_name}, bring up the main mix and the mics you need. "
-        "Those channel names are not written down yet, so read the labels on the board. "
+        f"{_board_health(runbook)} "
         "Start the stream on the service PC. This booth will not start it."
     )
 
@@ -254,9 +313,28 @@ def _prompt(question: str | None, snapshot: Snapshot) -> str:
 def _facts(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> str:
     mix = runbook.house_mix
     parts = [
-        f"House mix in OBS: {mix.obs_name}, Windows device {mix.windows_device}, target {mix.target_db:.0f} dB.",
-        f"Mixer: {runbook.board_name}.",
+        (
+            f"House mix in OBS: {mix.obs_name}, Windows device {mix.windows_device}. "
+            f"This is one combined X-USB feed, target {mix.target_db:.0f} dB."
+        ),
+        f"Mixer: {runbook.board_name}. Monitored separately over OSC, not as extra OBS inputs.",
     ]
+    report = describe_path(snapshot, runbook)
+    parts.append(report.conclusion)
+    if snapshot.board is not None and snapshot.board.connected:
+        parts.append(report.summary())
+    scribble = _scribble_fact(runbook)
+    if scribble:
+        parts.append(scribble)
+    unmapped = [item.role for item in runbook.channels if item.kind == "channel" and not item.strip]
+    if unmapped:
+        parts.append("Still unmapped: " + ", ".join(unmapped) + ".")
+    if runbook.stream_mix is not None and not runbook.stream_mix.strip:
+        parts.append("No dedicated stream bus is assigned. YouTube uses the house mix.")
+    elif runbook.stream_mix is not None and runbook.stream_mix.strip.isdigit():
+        parts.append(f"Stream mix is {runbook.stream_mix.kind} {int(runbook.stream_mix.strip)}.")
+    if runbook.rack:
+        parts.append("Not monitored: " + ", ".join(item.name for item in runbook.rack) + ".")
     if snapshot.connected:
         scene = snapshot.program_scene or "unknown"
         stream = "live" if snapshot.streaming else "stopped"

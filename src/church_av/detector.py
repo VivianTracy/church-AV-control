@@ -3,7 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from church_av.models import Action, Fault, Snapshot
+from church_av.path import QUIET_DB, describe_path
 from church_av.runbook import Runbook
+
+_PATH_TITLES = {
+    "path_mic_dark": "The mic isn't reaching the mixer",
+    "path_stream_dark": "The stream bus is quiet",
+    "path_usb_dark": "The X32 USB send is quiet",
+    "path_obs_dark": "The mixer audio isn't reaching OBS",
+    "house_mix_silent": "House mix is silent",
+}
 
 
 @dataclass
@@ -89,6 +98,7 @@ class Detector:
                         runbook.board_instruction(
                             "main",
                             "If the board meters are already low, raise {name} on the {board}.",
+                            snapshot.board,
                         ),
                     ],
                 )
@@ -99,7 +109,7 @@ class Detector:
                 self._clip_streak += 1
             else:
                 self._clip_streak = 0
-            if house.meter_db <= -55:
+            if house.meter_db <= QUIET_DB:
                 self._silence_streak += 1
             else:
                 self._silence_streak = 0
@@ -114,27 +124,14 @@ class Detector:
                             runbook.board_instruction(
                                 "main",
                                 "On the {board}, lower {name} a little.",
+                                snapshot.board,
                             ),
                             "OBS should stay near its current fader. The clip is coming from the board.",
                         ],
                     )
                 )
             if runbook.expect_stream_live and self._silence_streak >= 3:
-                faults.append(
-                    Fault(
-                        id="house_mix_silent",
-                        severity="critical",
-                        title="House mix is silent",
-                        evidence="Audio Input Capture is open, and the X-USB meter has been at the noise floor.",
-                        steps=[
-                            runbook.board_instruction(
-                                "main",
-                                "Check that the {board} USB send is up and {name} is not muted.",
-                            ),
-                            "In OBS, Audio Input Capture should stay unmuted.",
-                        ],
-                    )
-                )
+                faults.append(_silence_fault(snapshot, runbook))
         else:
             self._clip_streak = 0
             self._silence_streak = 0
@@ -199,3 +196,33 @@ class Detector:
 
     def _visible(self, faults: list[Fault]) -> list[Fault]:
         return [fault for fault in faults if fault.id not in self._dismissed]
+
+
+def _silence_fault(snapshot: Snapshot, runbook: Runbook) -> Fault:
+    """Use X32 meters when they exist. Otherwise keep the OBS-only guidance."""
+    if snapshot.board is not None and snapshot.board.connected:
+        report = describe_path(snapshot, runbook)
+        fault_id = report.fault_id if report.fault_id.startswith("path_") else "house_mix_silent"
+        return Fault(
+            id=fault_id,
+            severity="critical",
+            title=_PATH_TITLES.get(fault_id, "House mix is silent"),
+            evidence=report.conclusion,
+            steps=[
+                *[stage.detail for stage in report.stages],
+                "In OBS, Audio Input Capture should stay unmuted.",
+            ],
+        )
+    return Fault(
+        id="house_mix_silent",
+        severity="critical",
+        title="House mix is silent",
+        evidence="Audio Input Capture is open, and the X-USB meter has been at the noise floor.",
+        steps=[
+            runbook.board_instruction(
+                "main",
+                "Check that the {board} USB send is up and {name} is not muted.",
+            ),
+            "In OBS, Audio Input Capture should stay unmuted.",
+        ],
+    )

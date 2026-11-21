@@ -7,28 +7,81 @@ house_mix:
   obs_name: Audio Input Capture
   windows_device: Microphone (X-USB)
   role: >
-    Behringer X32 mixer USB output. Pulpit, handheld, and playback are mixed
-    on the board before they reach OBS, so this is one fader, not one mic.
+    One combined Behringer X32 USB feed. Pulpit, handheld, and playback are
+    mixed on the board before they reach OBS, so this is one fader, not one mic.
+    The X32 itself is watched separately over OSC.
   target_db: -2
   warn_below_db: -20
 
-# Physical mixer. Leave name empty until it is read off the board.
-# An empty name makes the booth ask. It does not invent a channel number.
+# The mixer is a separate OSC connection. OBS still receives one X-USB feed.
+# Names below were read off the channel 1-16 scribbles. A blank strip is not a guess.
+# Channels 17-32 are not readable in the photos, so the pulpit strip stays empty.
 board:
   name: Behringer X32
+  link: osc
+  usb_source: main
   channels:
     - id: pulpit
       role: Pulpit mic
+      kind: channel
+      strip: ""
       name: ""
     - id: handheld
       role: Handheld mic
+      kind: channel
+      strip: ""
       name: ""
     - id: playback
       role: Playback
+      kind: channel
+      strip: ""
       name: ""
     - id: main
       role: Main mix
+      kind: main
+      strip: ""
       name: ""
+  # Optional YouTube mix. Leave strip empty until a bus or matrix is routed
+  # to the USB card. OBS still sees that card as one Microphone (X-USB) input.
+  stream_mix:
+    id: stream
+    role: Stream mix
+    kind: bus
+    strip: ""
+    name: ""
+  labels:
+    - strip: 1
+      name: Worship
+    - strip: 2
+      name: Worship
+    - strip: 3
+      name: Worship
+    - strip: 4
+      name: Worship
+    - strip: 5
+      name: Worship
+    - strip: 6
+      name: Worship
+    - strip: 7
+      name: Worship
+    - strip: 8
+      name: Worship
+    - strip: 9
+      name: Worship
+    - strip: 10
+      name: Keys L
+    - strip: 11
+      name: Piano L
+    - strip: 12
+      name: Piano R
+    - strip: 13
+      name: Offering
+    - strip: 14
+      name: Moderator
+    - strip: 15
+      name: Reception
+    - strip: 16
+      name: Speaker
 
 sources:
   - obs_name: Wall Cam
@@ -67,3 +120,14 @@ scenes:
     picture: The service PC's own screen
   - name: 11-Acer 70 + Slide 30
     picture: The service PC's screen large, Slide PC small
+
+# No control interface was visible for these. The booth does not poll them.
+rack:
+  - name: ADJ PC-100A
+    note: Physical power switches only. No remote telemetry.
+  - name: Amplifiers
+    note: No control interface on the rack. Not monitored.
+  - name: Wireless receivers
+    note: No control interface on the rack. Not monitored.
+  - name: Lighting controller
+    note: No control interface on the rack. Not monitored.

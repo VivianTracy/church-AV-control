@@ -1,7 +1,16 @@
 from __future__ import annotations
 
-from church_av.models import Fault, Snapshot
+from church_av.models import BoardReading, Fault, Snapshot
+from church_av.path import describe_path
 from church_av.runbook import Runbook
+
+_BOARD_DIAGRAM = {
+    "house_mix_clipping",
+    "house_mix_silent",
+    "path_mic_dark",
+    "path_stream_dark",
+    "path_usb_dark",
+}
 
 CATALOG_ID = "https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json"
 SURFACE_ID = "booth"
@@ -42,7 +51,7 @@ def build_messages(
         components.append(_text("fault_heading", "Adjust here"))
         for index, fault in enumerate(faults):
             root_children.append(f"fault_{index}")
-            components.extend(_fault_card(index, fault, allow_apply, runbook))
+            components.extend(_fault_card(index, fault, allow_apply, runbook, snapshot.board))
     elif snapshot.connected:
         root_children.append("clear")
         components.extend(_clear_card())
@@ -187,9 +196,15 @@ def _clear_card() -> list[dict]:
     ]
 
 
-def _fault_card(index: int, fault: Fault, allow_apply: bool, runbook: Runbook) -> list[dict]:
-    if fault.id in {"house_mix_clipping", "house_mix_silent"}:
-        return _board_fault_card(index, fault, runbook)
+def _fault_card(
+    index: int,
+    fault: Fault,
+    allow_apply: bool,
+    runbook: Runbook,
+    board: BoardReading | None = None,
+) -> list[dict]:
+    if fault.id in _BOARD_DIAGRAM:
+        return _board_fault_card(index, fault, runbook, board)
     place, control, icon_name = _guide_place(fault)
     graphic, mark = _graphic(fault)
     copy_ids = [f"fault_{index}_place", f"fault_{index}_control", f"fault_{index}_body"]
@@ -230,14 +245,20 @@ def _fault_card(index: int, fault: Fault, allow_apply: bool, runbook: Runbook) -
     return components
 
 
-def _board_fault_card(index: int, fault: Fault, runbook: Runbook) -> list[dict]:
+def _board_fault_card(
+    index: int,
+    fault: Fault,
+    runbook: Runbook,
+    board: BoardReading | None = None,
+) -> list[dict]:
     place, control, _icon_name = _guide_place(fault)
-    direction = "up" if fault.id == "house_mix_silent" else "down"
+    direction = "down" if fault.id == "house_mix_clipping" else "up"
+    highlight = _highlight(fault, runbook)
     copy_ids = [f"fault_{index}_place", f"fault_{index}_control", f"fault_{index}_body"]
     components: list[dict] = [
         _card(f"fault_{index}", f"fault_{index}_stack"),
         _column(f"fault_{index}_stack", [f"fault_{index}_board", f"fault_{index}_copy"]),
-        _x32_diagram(f"fault_{index}_board", runbook, "main", direction),
+        _x32_diagram(f"fault_{index}_board", runbook, highlight, direction, board),
         _column(f"fault_{index}_copy", copy_ids),
         _text(f"fault_{index}_place", place, "caption"),
         _text(f"fault_{index}_control", control),
@@ -250,12 +271,37 @@ def _board_fault_card(index: int, fault: Fault, runbook: Runbook) -> list[dict]:
     return components
 
 
-def _x32_diagram(component_id: str, runbook: Runbook, highlight: str, direction: str) -> dict:
-    channels = runbook.channels or [runbook.channel(highlight)]
+def _highlight(fault: Fault, runbook: Runbook) -> str:
+    if fault.id == "path_stream_dark":
+        return "stream"
+    if fault.id == "path_mic_dark":
+        for item in runbook.channels:
+            if item.kind == "channel" and item.strip:
+                return item.id
+        return "pulpit"
+    return "main"
+
+
+def _x32_diagram(
+    component_id: str,
+    runbook: Runbook,
+    highlight: str,
+    direction: str,
+    board: BoardReading | None = None,
+) -> dict:
+    channels = [item for item in runbook.channels if item is not None]
+    if highlight == "stream" and runbook.stream_mix is not None:
+        channels.append(runbook.stream_mix)
+    if not channels:
+        found = runbook.channel(highlight)
+        channels = [] if found is None else [found]
     strips = [
-        {"id": item.id, "role": item.role, "name": item.name}
+        {
+            "id": item.id,
+            "role": item.role,
+            "name": runbook.resolved_name(item.id, board) or "",
+        }
         for item in channels
-        if item is not None
     ]
     return {
         "id": component_id,
@@ -268,9 +314,9 @@ def _x32_diagram(component_id: str, runbook: Runbook, highlight: str, direction:
 
 
 def _graphic(fault: Fault) -> tuple[str, str]:
-    if fault.id in {"house_mix_clipping", "house_mix_silent"}:
+    if fault.id in _BOARD_DIAGRAM:
         return "badge", "Board"
-    if fault.id.startswith("house_mix"):
+    if fault.id == "path_obs_dark" or fault.id.startswith("house_mix"):
         return "fader", "X-USB"
     if fault.id == "obs_disconnected":
         return "badge", "PC"
@@ -278,7 +324,9 @@ def _graphic(fault: Fault) -> tuple[str, str]:
 
 
 def _guide_place(fault: Fault) -> tuple[str, str, str]:
-    if fault.id in {"house_mix_clipping", "house_mix_silent"}:
+    if fault.id == "path_obs_dark":
+        return "OBS Audio Mixer", "Audio Input Capture", "volumeUp"
+    if fault.id in _BOARD_DIAGRAM:
         question = fault.steps[0] if fault.steps else "Which knob?"
         return "Behringer X32", question, "volumeUp"
     if fault.id in {"house_mix_muted", "house_mix_fader_low"}:
@@ -313,8 +361,12 @@ def _mix_copy(snapshot: Snapshot, runbook: Runbook) -> tuple[str, str, str]:
         detail = f"Muted · {device}"
         return "Muted", detail, "volumeMute"
     if house.volume_db is None:
-        return "Open", device, "volumeUp"
-    return "Open", f"Fader {house.volume_db:.0f} dB · {device}", "volumeUp"
+        value, detail = "Open", device
+    else:
+        value, detail = "Open", f"Fader {house.volume_db:.0f} dB · {device}"
+    if snapshot.board is not None and snapshot.board.connected:
+        detail = f"{detail} · {describe_path(snapshot, runbook).summary()}"
+    return value, detail, "volumeUp"
 
 
 def _meter_data(snapshot: Snapshot, runbook: Runbook) -> dict:

@@ -13,14 +13,37 @@ from test_detector import runbook, snapshot
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_board_channels_are_unnamed_until_someone_reads_the_mixer():
+def test_scribble_names_from_the_console_are_kept_and_the_rest_stay_unmapped():
     book = load_runbook(ROOT / "runbook" / "church.yaml")
     assert book.board_name == "Behringer X32"
     assert [item.id for item in book.channels] == ["pulpit", "handheld", "playback", "main"]
-    assert all(item.name == "" for item in book.channels)
+    assert book.channel("pulpit").name == ""
+    assert book.channel("pulpit").strip == ""
+    pulpit = book.board_instruction("pulpit", "Raise {name} on the {board}.")
+    assert pulpit.startswith("What is the Pulpit mic called on the Behringer X32?")
+    assert book.channel("handheld").name == ""
+    assert book.channel("handheld").strip == ""
+    assert book.channel("playback").strip == ""
+    assert book.channel("main").name == ""
     question = book.board_instruction("main", "Raise {name} on the {board}.")
     assert question.startswith("What is the Main mix called on the Behringer X32?")
     assert "1" not in question
+    worship = [item.strip for item in book.labels if item.name == "Worship"]
+    assert worship == list(range(1, 10))
+    names = {item.strip: item.name for item in book.labels}
+    assert names[10] == "Keys L"
+    assert names[11] == "Piano L"
+    assert names[12] == "Piano R"
+    assert names[13] == "Offering"
+    assert names[14] == "Moderator"
+    assert names[15] == "Reception"
+    assert names[16] == "Speaker"
+    assert 20 not in names
+    assert book.stream_mix is not None
+    assert book.stream_mix.strip == ""
+    assert book.usb_source == "main"
+    assert book.house_mix.windows_device == "Microphone (X-USB)"
+    assert any(item.name == "ADJ PC-100A" for item in book.rack)
 
 
 def test_a_named_board_channel_is_used_as_written():
@@ -121,7 +144,7 @@ class FakeReader:
         return None
 
 
-def _settings(allow_apply: bool):
+def _settings(allow_apply: bool, runbook_path: Path | None = None):
     from church_av.config import Settings
 
     return Settings(
@@ -132,7 +155,7 @@ def _settings(allow_apply: bool):
         booth_host="127.0.0.1",
         booth_port=8765,
         poll_seconds=2,
-        runbook_path=ROOT / "runbook" / "church.yaml",
+        runbook_path=runbook_path or ROOT / "runbook" / "church.yaml",
         root=ROOT,
     )
 

@@ -12,16 +12,24 @@ from church_av.a2ui import SURFACE_ID, build_messages
 from church_av.config import Settings
 from church_av.detector import Detector
 from church_av.fixtures import FIXTURE_NAMES, load_fixture
-from church_av.models import Fault, Snapshot
+from church_av.models import BoardReading, Fault, Snapshot
 from church_av.obs_read import ObsReader
-from church_av.policy import decide
-from church_av.runbook import Runbook, load_runbook
+from church_av.policy import decide, decide_mapping
+from church_av.runbook import Runbook, load_runbook, write_strip
+from church_av.x32_read import X32Reader
 
 
 class Booth:
-    def __init__(self, settings: Settings, reader: ObsReader, runbook: Runbook) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        reader: ObsReader,
+        runbook: Runbook,
+        board_reader: X32Reader | None = None,
+    ) -> None:
         self.settings = settings
         self.reader = reader
+        self.board_reader = board_reader
         self.runbook = runbook
         self.detector = Detector()
         self._lock = Lock()
@@ -36,6 +44,7 @@ class Booth:
 
     def tick(self) -> None:
         snapshot = self.reader.read()
+        snapshot.board = self._board_reading()
         faults = self.detector.detect(snapshot, self.runbook)
         fault_ids = tuple(fault.id for fault in faults)
         with self._lock:
@@ -122,6 +131,18 @@ class Booth:
         fault_id = str(context.get("faultId", ""))
         with self._lock:
             fault = next((item for item in self.faults if item.id == fault_id), None)
+        if name == "map_channel":
+            channel_id = str(context.get("channelId", "")).strip()
+            strip = str(context.get("strip", "")).strip()
+            decision = decide_mapping(channel_id, strip, self.runbook)
+            if not decision.allowed:
+                return {"ok": False, "message": decision.reason}
+            try:
+                write_strip(self.settings.runbook_path, channel_id, strip)
+            except (OSError, ValueError) as exc:
+                return {"ok": False, "message": str(exc)}
+            self.runbook = self.runbook.with_strip(channel_id, strip)
+            return {"ok": True, "message": decision.reason}
         if name == "ask":
             question = str(context.get("question", "")).strip()
             preview = str(context.get("preview", "")).strip()
@@ -177,6 +198,14 @@ class Booth:
         else:
             raise RuntimeError("That change is not available from the booth.")
         return decision.reason
+
+    def _board_reading(self) -> BoardReading | None:
+        if self.board_reader is None:
+            return None
+        try:
+            return self.board_reader.read(self.runbook)
+        except Exception as exc:
+            return BoardReading(connected=False, error=str(exc).strip() or exc.__class__.__name__)
 
 
 def _fault_dict(fault: Fault) -> dict:
@@ -259,10 +288,16 @@ def serve(booth: Booth) -> None:
     port = booth.settings.booth_port
     print(f"Booth at http://{host}:{port}", flush=True)
     print(f"Reading OBS at {booth.settings.obs_host}:{booth.settings.obs_port}", flush=True)
+    if booth.settings.x32_host:
+        print(f"Reading X32 at {booth.settings.x32_host}:{booth.settings.x32_port}", flush=True)
+    else:
+        print("X32 OSC is off. OBS still shows the one X-USB feed.", flush=True)
     try:
         server.serve_forever()
     finally:
         booth.reader.close()
+        if booth.board_reader is not None:
+            booth.board_reader.close()
         server.server_close()
 
 

@@ -1,4 +1,9 @@
-"""The only place an OBS change is allowed. The agent may name an action; this module keeps it or drops it."""
+"""The only place an OBS change is allowed.
+
+The agent may name an action. This module keeps it or drops it.
+X32 fader and mute changes are refused. OSC is read-only.
+A strip mapping edits the runbook only, and only after the operator asks.
+"""
 
 from __future__ import annotations
 
@@ -20,8 +25,9 @@ _BLOCKED_KINDS = {
     "set_stream_settings",
     "remove_input",
     "delete_source",
-    "board",
 }
+
+_STRIP_LIMITS = {"channel": 32, "bus": 16, "matrix": 6}
 
 
 @dataclass(frozen=True)
@@ -42,6 +48,8 @@ def decide(
         return Decision(False, "There is no change to apply.")
     if proposal.kind in _STREAM_KINDS:
         return Decision(False, "Starting or stopping the stream stays on the service PC.")
+    if proposal.kind == "board" or proposal.kind.startswith(("x32", "osc")):
+        return Decision(False, "The X32 is monitored over OSC. Mixer changes stay on the console.")
     if proposal.kind in _BLOCKED_KINDS:
         return Decision(False, "That change is not available from the booth.")
     if not snapshot.connected:
@@ -54,6 +62,23 @@ def decide(
     if proposal.kind == "set_program_scene":
         return _scene(proposal, snapshot, confirmed)
     return Decision(False, "That change is not available from the booth.")
+
+
+def decide_mapping(channel_id: str, strip: str, runbook: Runbook) -> Decision:
+    """Allow an operator to record which strip a role uses. This does not write to the X32."""
+    item = runbook.entry(channel_id)
+    if item is None:
+        return Decision(False, "That channel is not in the runbook.")
+    if item.kind == "main":
+        return Decision(False, "The main mix does not use a channel strip number.")
+    limit = _STRIP_LIMITS.get(item.kind)
+    try:
+        number = int(str(strip).strip())
+    except ValueError:
+        number = 0
+    if limit is None or not 1 <= number <= limit:
+        return Decision(False, f"Enter a {item.kind} number from 1 to {limit}.")
+    return Decision(True, f"Map {item.role} to {item.kind} {number}.")
 
 
 def _mute(proposal: Action, runbook: Runbook) -> Decision:
