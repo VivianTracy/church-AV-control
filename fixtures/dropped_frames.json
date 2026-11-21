@@ -1,0 +1,132 @@
+{
+  "name": "dropped_frames",
+  "observed": false,
+  "note": "The test stream skipped 0 of 10,607 frames. This pair is constructed so a later poll can show 18 skipped frames out of the next 200, which is 9 percent and above the 5 percent fault line. The first poll establishes the baseline and has no fault.",
+  "expect_faults_each": [[], ["frames_skipped"]],
+  "snapshots": [
+    {
+      "connected": true,
+      "error": null,
+      "obs_version": "32.2.2",
+      "platform": "Windows 11 Version 26H2",
+      "program_scene": "1-Stage Only",
+      "scenes": [
+        "11-Acer 70 + Slide 30",
+        "10-Acer Monitor",
+        "9-Studio (Wall Cam + Mobile Cam)",
+        "8-Mobile Cam Only",
+        "7-Mobile Cam 50/Slide 50",
+        "6-Stage 30/Slide 100",
+        "5-Stage 30/Slide 70",
+        "4-Stage 100/Slide 30",
+        "3-Stage 50/Slide 50",
+        "2-Slide Only",
+        "1-Stage Only"
+      ],
+      "streaming": true,
+      "reconnecting": false,
+      "output_skipped_frames": 0,
+      "output_total_frames": 10125,
+      "cpu_percent": null,
+      "inputs": [
+        {
+          "name": "Display Capture",
+          "kind": "monitor_capture",
+          "muted": null,
+          "volume_db": null,
+          "meter_db": null
+        },
+        {
+          "name": "Mobile Cam",
+          "kind": "dshow_input",
+          "muted": true,
+          "volume_db": -100.0,
+          "meter_db": null
+        },
+        {
+          "name": "Wall Cam",
+          "kind": "dshow_input",
+          "muted": true,
+          "volume_db": -100.0,
+          "meter_db": null
+        },
+        {
+          "name": "Audio Input Capture",
+          "kind": "wasapi_input_capture",
+          "muted": false,
+          "volume_db": -1.7768230438232422,
+          "meter_db": -100.0
+        },
+        {
+          "name": "Slide PC",
+          "kind": "dshow_input",
+          "muted": true,
+          "volume_db": -100.0,
+          "meter_db": null
+        }
+      ]
+    },
+    {
+      "connected": true,
+      "error": null,
+      "obs_version": "32.2.2",
+      "platform": "Windows 11 Version 26H2",
+      "program_scene": "1-Stage Only",
+      "scenes": [
+        "11-Acer 70 + Slide 30",
+        "10-Acer Monitor",
+        "9-Studio (Wall Cam + Mobile Cam)",
+        "8-Mobile Cam Only",
+        "7-Mobile Cam 50/Slide 50",
+        "6-Stage 30/Slide 100",
+        "5-Stage 30/Slide 70",
+        "4-Stage 100/Slide 30",
+        "3-Stage 50/Slide 50",
+        "2-Slide Only",
+        "1-Stage Only"
+      ],
+      "streaming": true,
+      "reconnecting": false,
+      "output_skipped_frames": 18,
+      "output_total_frames": 10325,
+      "cpu_percent": null,
+      "inputs": [
+        {
+          "name": "Display Capture",
+          "kind": "monitor_capture",
+          "muted": null,
+          "volume_db": null,
+          "meter_db": null
+        },
+        {
+          "name": "Mobile Cam",
+          "kind": "dshow_input",
+          "muted": true,
+          "volume_db": -100.0,
+          "meter_db": null
+        },
+        {
+          "name": "Wall Cam",
+          "kind": "dshow_input",
+          "muted": true,
+          "volume_db": -100.0,
+          "meter_db": null
+        },
+        {
+          "name": "Audio Input Capture",
+          "kind": "wasapi_input_capture",
+          "muted": false,
+          "volume_db": -1.7768230438232422,
+          "meter_db": -100.0
+        },
+        {
+          "name": "Slide PC",
+          "kind": "dshow_input",
+          "muted": true,
+          "volume_db": -100.0,
+          "meter_db": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "name": "healthy",
+  "observed": true,
+  "note": "After the sound check and the test stream. The board was quiet, so the meter is at the noise floor. expect_stream_live is false, so a stopped stream is normal.",
+  "expect_faults": [],
+  "snapshot": {
+    "connected": true,
+    "error": null,
+    "obs_version": "32.2.2",
+    "platform": "Windows 11 Version 26H2",
+    "program_scene": "1-Stage Only",
+    "scenes": [
+      "11-Acer 70 + Slide 30",
+      "10-Acer Monitor",
+      "9-Studio (Wall Cam + Mobile Cam)",
+      "8-Mobile Cam Only",
+      "7-Mobile Cam 50/Slide 50",
+      "6-Stage 30/Slide 100",
+      "5-Stage 30/Slide 70",
+      "4-Stage 100/Slide 30",
+      "3-Stage 50/Slide 50",
+      "2-Slide Only",
+      "1-Stage Only"
+    ],
+    "streaming": false,
+    "reconnecting": false,
+    "output_skipped_frames": 0,
+    "output_total_frames": 10607,
+    "cpu_percent": null,
+    "inputs": [
+      {
+        "name": "Display Capture",
+        "kind": "monitor_capture",
+        "muted": null,
+        "volume_db": null,
+        "meter_db": null
+      },
+      {
+        "name": "Mobile Cam",
+        "kind": "dshow_input",
+        "muted": true,
+        "volume_db": -100.0,
+        "meter_db": null
+      },
+      {
+        "name": "Wall Cam",
+        "kind": "dshow_input",
+        "muted": true,
+        "volume_db": -100.0,
+        "meter_db": null
+      },
+      {
+        "name": "Audio Input Capture",
+        "kind": "wasapi_input_capture",
+        "muted": false,
+        "volume_db": -1.7768230438232422,
+        "meter_db": -100.0
+      },
+      {
+        "name": "Slide PC",
+        "kind": "dshow_input",
+        "muted": true,
+        "volume_db": -100.0,
+        "meter_db": null
+      }
+    ]
+  }
+}
