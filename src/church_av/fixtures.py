@@ -13,6 +13,7 @@ FIXTURE_NAMES = (
     "low_fader",
     "live_stream",
     "dropped_frames",
+    "clipping",
 )
 
 

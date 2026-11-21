@@ -13,6 +13,7 @@ def test_rehearsal_fixtures_cover_the_five_cases():
         "low_fader",
         "live_stream",
         "dropped_frames",
+        "clipping",
     )
 
 

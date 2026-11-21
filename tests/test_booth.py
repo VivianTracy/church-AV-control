@@ -45,7 +45,13 @@ def test_clipping_asks_which_board_knob():
     by_id = {item["id"]: item for item in surface["components"]}
     assert by_id["fault_0_place"]["text"] == "Behringer X32"
     assert by_id["fault_0_control"]["text"].startswith("What is the Main mix called")
-    assert by_id["fault_0_badge"]["component"] == "Column"
+    diagram = by_id["fault_0_board"]
+    assert diagram["component"] == "X32Diagram"
+    assert diagram["board"] == "Behringer X32"
+    assert diagram["highlight"] == "main"
+    assert diagram["direction"] == "down"
+    assert [item["id"] for item in diagram["channels"]] == ["pulpit", "handheld", "playback", "main"]
+    assert "fault_0_badge" not in by_id
     assert "fault_0_fader" not in by_id
 
 

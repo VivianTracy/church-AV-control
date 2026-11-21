@@ -42,7 +42,7 @@ def build_messages(
         components.append(_text("fault_heading", "Adjust here"))
         for index, fault in enumerate(faults):
             root_children.append(f"fault_{index}")
-            components.extend(_fault_card(index, fault, allow_apply))
+            components.extend(_fault_card(index, fault, allow_apply, runbook))
     elif snapshot.connected:
         root_children.append("clear")
         components.extend(_clear_card())
@@ -147,8 +147,13 @@ def _guide_card(reply: str, asked: str, faults: list[Fault]) -> list[dict]:
         children.append("guide_asked")
         components.append(_text("guide_asked", f"You asked: {asked}", "caption"))
     children.append("guide_reply")
-    shown = reply if asked else "Ask about what you see."
-    components.append(_text("guide_reply", shown or "Ask about what you see."))
+    if asked:
+        shown = reply or "Ask about what you see."
+    elif faults and reply:
+        shown = reply
+    else:
+        shown = "Ask about what you see."
+    components.append(_text("guide_reply", shown))
     return [_card("guide", "guide_body"), _column("guide_body", children), *components]
 
 
@@ -182,7 +187,9 @@ def _clear_card() -> list[dict]:
     ]
 
 
-def _fault_card(index: int, fault: Fault, allow_apply: bool) -> list[dict]:
+def _fault_card(index: int, fault: Fault, allow_apply: bool, runbook: Runbook) -> list[dict]:
+    if fault.id in {"house_mix_clipping", "house_mix_silent"}:
+        return _board_fault_card(index, fault, runbook)
     place, control, icon_name = _guide_place(fault)
     graphic, mark = _graphic(fault)
     copy_ids = [f"fault_{index}_place", f"fault_{index}_control", f"fault_{index}_body"]
@@ -221,6 +228,43 @@ def _fault_card(index: int, fault: Fault, allow_apply: bool) -> list[dict]:
             }
         )
     return components
+
+
+def _board_fault_card(index: int, fault: Fault, runbook: Runbook) -> list[dict]:
+    place, control, _icon_name = _guide_place(fault)
+    direction = "up" if fault.id == "house_mix_silent" else "down"
+    copy_ids = [f"fault_{index}_place", f"fault_{index}_control", f"fault_{index}_body"]
+    components: list[dict] = [
+        _card(f"fault_{index}", f"fault_{index}_stack"),
+        _column(f"fault_{index}_stack", [f"fault_{index}_board", f"fault_{index}_copy"]),
+        _x32_diagram(f"fault_{index}_board", runbook, "main", direction),
+        _column(f"fault_{index}_copy", copy_ids),
+        _text(f"fault_{index}_place", place, "caption"),
+        _text(f"fault_{index}_control", control),
+        _text(f"fault_{index}_body", fault.evidence),
+    ]
+    for step_index, step in enumerate(fault.steps):
+        step_id = f"fault_{index}_step_{step_index}"
+        copy_ids.append(step_id)
+        components.append(_text(step_id, step))
+    return components
+
+
+def _x32_diagram(component_id: str, runbook: Runbook, highlight: str, direction: str) -> dict:
+    channels = runbook.channels or [runbook.channel(highlight)]
+    strips = [
+        {"id": item.id, "role": item.role, "name": item.name}
+        for item in channels
+        if item is not None
+    ]
+    return {
+        "id": component_id,
+        "component": "X32Diagram",
+        "board": runbook.board_name,
+        "highlight": highlight,
+        "direction": direction,
+        "channels": strips,
+    }
 
 
 def _graphic(fault: Fault) -> tuple[str, str]:

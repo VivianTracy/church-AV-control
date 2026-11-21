@@ -45,8 +45,8 @@ def test_missing_key_uses_detector_text_and_skips_the_model():
     guide = explain(snapshot, _book(), faults, api_key="", completer=completer)
     assert called is False
     assert guide.source == "detector"
-    assert "House mix is muted" in guide.reply
-    assert "speaker" in guide.reply
+    assert "静音" in guide.reply
+    assert "喇叭" in guide.reply
     assert "Audio Input Capture" in guide.reply
 
 
@@ -87,6 +87,7 @@ def test_a_health_check_is_answered_when_obs_is_down():
     assert guide.source == "detector"
     assert "Audio Input Capture" in guide.reply
     assert "Wall Cam" in guide.reply
+    assert "Before Start Streaming" in guide.reply
     assert "Cannot read the service machine" not in guide.reply
 
 
@@ -142,7 +143,7 @@ def test_instruction_keeps_the_agent_from_driving_the_stream():
     assert "above 0 dB" in INSTRUCTION
     assert "ask what the knob is called" in INSTRUCTION
     assert "An English question gets an English reply." in INSTRUCTION
-    assert "If they ask for Chinese, write the whole reply in Chinese." in INSTRUCTION
+    assert "When no question was asked and you are explaining a detector fault, write the whole reply in Chinese." in INSTRUCTION
 
 
 def test_installed_agent_keeps_the_read_only_tools():

@@ -15,7 +15,8 @@ Answer the question the operator asked.
 The facts in the message are the only live readings and church names you have.
 Do not recite a general checklist unless the operator asked for one.
 Reply in two or three sentences a volunteer can follow from across the room.
-Reply in the language the operator wrote in. An English question gets an English reply. If they ask for Chinese, write the whole reply in Chinese.
+Reply in the language the operator wrote in. An English question gets an English reply. A Chinese question gets a Chinese reply.
+When no question was asked and you are explaining a detector fault, write the whole reply in Chinese.
 Name the OBS control, such as the Audio Mixer speaker for Audio Input Capture,
 or the Behringer X32 channel when the runbook names it.
 Do not invent a board channel name.
@@ -112,7 +113,9 @@ def local_reply(
     question: str | None = None,
 ) -> str:
     if question and not snapshot.connected and _asks_for_a_check(question):
-        return _health_check(snapshot, runbook, _wants_chinese(question))
+        return _health_check(snapshot, runbook, _question_is_chinese(question))
+    if not question and faults:
+        return _diagnosis(runbook, faults)
     if not faults:
         return _calm_status(snapshot, runbook)
     blocks = []
@@ -144,22 +147,56 @@ def _asks_for_a_check(question: str) -> bool:
     return any(phrase in text for phrase in ("health", "before streaming", "before the stream", "checklist", "开播前", "检查"))
 
 
-def _wants_chinese(question: str) -> bool:
+def _question_is_chinese(question: str) -> bool:
     if "中文" in question or "汉语" in question:
         return True
-    if "chin" in question.lower():
+    if "in chinese" in question.lower():
         return True
     return any("\u4e00" <= char <= "\u9fff" for char in question)
 
 
 def _could_not_answer(question: str, snapshot: Snapshot) -> str:
-    if _wants_chinese(question):
+    if _question_is_chinese(question):
         if not snapshot.connected:
             return "现在回答不了这个问题。服务电脑读不到，所以没有现场画面和音量。"
         return "现在回答不了这个问题。请再问一次。"
     if not snapshot.connected:
         return "The guide could not answer that question. The service PC cannot be read from here, so there is no live picture or level."
     return "The guide could not answer that question. Ask again."
+
+
+def _diagnosis(runbook: Runbook, faults: list[Fault]) -> str:
+    return " ".join(_diagnosis_line(fault, runbook) for fault in faults)
+
+
+def _diagnosis_line(fault: Fault, runbook: Runbook) -> str:
+    mix = runbook.house_mix.obs_name
+    board = runbook.board_name
+    target = f"{runbook.house_mix.target_db:.0f}"
+    lines = {
+        "obs_disconnected": (
+            "现在读不到服务电脑。请在那台电脑上打开 OBS，确认 WebSocket 服务器已启用，"
+            "并且防火墙允许 OBS Studio 在专用网络上通信。"
+        ),
+        "house_mix_missing": f"OBS 里没有名为 {mix} 的输入。请找到 Microphone (X-USB)，或改手册里的名称。",
+        "house_mix_muted": (
+            f"房间混音被静音了。在 OBS 音频混音器里，点 {mix} 下面的喇叭，取消静音。"
+            "Wall Cam、Mobile Cam、Slide PC 保持静音。"
+        ),
+        "house_mix_fader_low": (
+            f"{mix} 的推子偏低。在 OBS 音频混音器里把它往上推一点，靠近 {target} dB。"
+            f"如果调音台电平已经很低，先看 {board} 的主输出。"
+        ),
+        "house_mix_clipping": f"声音削波了。在 {board} 上把主输出拉低一点。OBS 里 {mix} 的推子保持不动。",
+        "house_mix_silent": (
+            f"房间混音没有声音。检查 {board} 的 USB 输出和主输出没有被静音，"
+            f"并且 OBS 里 {mix} 保持取消静音。"
+        ),
+        "stream_reconnecting": "直播正在重新连接。先等 OBS 自己连上，不要点停止。",
+        "stream_stopped": "现在应该已经在直播，但 OBS 的输出是停的。请在服务电脑上点 Start Streaming。这个控制台不会替你开播。",
+        "frames_skipped": "OBS 丢帧了。先关掉服务电脑上别的程序。直播中不要改编码器、码率或分辨率。",
+    }
+    return lines.get(fault.id, fault.title)
 
 
 def _muted_names(runbook: Runbook) -> list[str]:
@@ -193,7 +230,7 @@ def _health_check(snapshot: Snapshot, runbook: Runbook, chinese: bool = False) -
 def _prompt(question: str | None, snapshot: Snapshot) -> str:
     if question:
         asked = "The operator asked: " + question.strip() + " "
-        language = "Reply in the language of the question. An English question gets an English reply. If they ask for Chinese, write the whole reply in Chinese. "
+        language = "Reply in the language of the question. An English question gets an English reply. A Chinese question gets a Chinese reply. "
         if not snapshot.connected:
             return (
                 asked
@@ -208,8 +245,9 @@ def _prompt(question: str | None, snapshot: Snapshot) -> str:
             + "Reply in two or three sentences and name where to adjust."
         )
     return (
-        "A detector fault may be open. Use the tools. "
-        "Reply in two or three sentences a volunteer can follow, and name where to adjust."
+        "A detector fault may be open. "
+        "Reply in two or three sentences a volunteer can follow, and name where to adjust. "
+        "Write the whole reply in Chinese."
     )
 
 

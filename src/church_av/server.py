@@ -363,6 +363,18 @@ PAGE = r"""<!DOCTYPE html>
   #clear { background: #1c241c; border: 1px solid #314233; margin-top: 0.85rem; }
   #clear .row { align-items: center; padding: 0.8rem 0.9rem; gap: 0.7rem; }
   article[id^="fault_"] { background: #2a211c; border: 1px solid #5a4034; margin-top: 0.7rem; }
+  .x32 { margin: 0.85rem 0.85rem 0; background: #14110f; border-radius: 10px; padding: 0.7rem 0.65rem 0.6rem; }
+  .x32-name { color: #e0a15a; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.45rem; }
+  .x32-strips { display: flex; align-items: flex-end; gap: 0.35rem; }
+  .x32-gap { width: 0.7rem; flex: 0 0 0.7rem; }
+  .x32-strip { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+  .x32-arrow { height: 1.05rem; color: #e06c5a; font-size: 1.15rem; font-weight: 700; line-height: 1; }
+  .x32-fader { position: relative; width: 0.5rem; height: 5.4rem; background: #2a261f; border-radius: 3px; }
+  .x32-strip.is-hot .x32-fader { box-shadow: 0 0 0 1px #e06c5a; }
+  .x32-knob { position: absolute; left: -0.28rem; width: 1.05rem; height: 0.42rem; background: #8d8478; border-radius: 2px; }
+  .x32-strip.is-hot .x32-knob { background: #f4efe6; }
+  .x32-label { font-size: 0.68rem; line-height: 1.2; text-align: center; color: #b7aa98; }
+  .x32-strip.is-hot .x32-label { color: #f4efe6; font-weight: 650; }
   article[id^="fault_"] > .row { align-items: stretch; }
   .mixer, .badge { width: 6.5rem; flex: 0 0 6.5rem; background: #14110f; align-items: center;
                   justify-content: flex-end; padding: 0.8rem 0.4rem 0.7rem; gap: 0.45rem; }
@@ -635,6 +647,7 @@ function renderNode(id, byId, data) {
     if (id.endsWith("_copy")) el.classList.add("copy");
     return el;
   }
+  if (node.component === "X32Diagram") return x32Diagram(node);
   if (node.component === "Card") {
     const el = document.createElement("article");
     el.id = id;
@@ -653,6 +666,43 @@ function renderNode(id, byId, data) {
     return el;
   }
   return document.createElement("span");
+}
+
+function x32Diagram(node) {
+  const el = document.createElement("div");
+  el.id = node.id;
+  el.className = "x32";
+  const title = document.createElement("div");
+  title.className = "x32-name";
+  title.textContent = node.board || "Behringer X32";
+  const strips = document.createElement("div");
+  strips.className = "x32-strips";
+  for (const channel of node.channels || []) {
+    if (channel.id === "main") {
+      const gap = document.createElement("div");
+      gap.className = "x32-gap";
+      strips.appendChild(gap);
+    }
+    const hot = channel.id === node.highlight;
+    const strip = document.createElement("div");
+    strip.className = hot ? "x32-strip is-hot" : "x32-strip";
+    const arrow = document.createElement("div");
+    arrow.className = "x32-arrow";
+    arrow.textContent = hot ? (node.direction === "up" ? "↑" : "↓") : "";
+    const fader = document.createElement("div");
+    fader.className = "x32-fader";
+    const knob = document.createElement("div");
+    knob.className = "x32-knob";
+    knob.style.top = hot && node.direction === "up" ? "16%" : (hot ? "66%" : "40%");
+    fader.appendChild(knob);
+    const label = document.createElement("div");
+    label.className = "x32-label";
+    label.textContent = (channel.name || "").trim() || channel.role || channel.id;
+    strip.append(arrow, fader, label);
+    strips.appendChild(strip);
+  }
+  el.append(title, strips);
+  return el;
 }
 
 function childToLi(node) {
