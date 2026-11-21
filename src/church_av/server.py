@@ -480,14 +480,14 @@ PAGE = r"""<!DOCTYPE html>
   .setup-aside { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.88rem; }
   .setup-aside li { margin: 0.2rem 0; }
   #guide_asked { margin: 0; color: var(--muted); }
-  #chat { align-items: end; gap: 0.6rem; background: var(--card); border: 1px solid var(--line);
+  #chat { align-items: end; gap: 0.6rem; background: #14663d; border: 1px solid #1f8a52;
           border-radius: 16px; padding: 1rem 1.15rem 1.1rem; }
-  #question { flex: 1; display: flex; flex-direction: column; gap: 0.35rem; color: var(--muted);
-              font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  #question { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; color: #fff;
+              font-size: 1.2rem; font-weight: 650; letter-spacing: -0.02em; text-transform: none; }
   #question input { font: 16px/1.4 ui-sans-serif, system-ui, sans-serif; text-transform: none;
-                    letter-spacing: 0; color: var(--text); background: var(--card); border: 1px solid var(--line);
+                    letter-spacing: 0; color: var(--text); background: #0c0d10; border: 1px solid #0c0d10;
                     border-radius: 12px; padding: 0.7rem 0.85rem; }
-  #question input:focus { outline: 1px solid #5c6370; outline-offset: 1px; }
+  #question input:focus { outline: 2px solid #fff; outline-offset: 1px; }
   #scene_strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: 0.5rem; }
   #scene_strip article { background: var(--card); border: 1px solid var(--line); padding: 0.55rem 0.7rem 0.6rem; border-radius: 12px; }
   #scene_current { background: #1c1f26; border-color: #8b919a; }
