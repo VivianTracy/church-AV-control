@@ -66,7 +66,7 @@ def build_agent(tools: list):
         return None
     return Agent(
         name="church_booth",
-        model="gemini-flash-latest",
+        model="gemini-3.5-flash",
         description="Explains church stream readings and points to the control to adjust.",
         instruction=INSTRUCTION,
         tools=tools,
