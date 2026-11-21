@@ -40,6 +40,8 @@ class Action:
     summary: str
     input_name: str | None = None
     muted: bool | None = None
+    volume_db: float | None = None
+    scene_name: str | None = None
 
 
 @dataclass

@@ -2,7 +2,7 @@ import json
 
 from church_av.a2ui import CATALOG_ID, build_messages
 from church_av.detector import Detector
-from church_av.models import InputReading, Snapshot
+from church_av.models import Action, InputReading, Snapshot
 from church_av.runbook import load_runbook
 from church_av.server import Booth
 from pathlib import Path
@@ -99,3 +99,16 @@ def test_apply_unmutes_only_the_house_mix():
     assert result["ok"] is True
     assert reader.calls == [("Audio Input Capture", False)]
     assert booth.faults == []
+
+
+def test_apply_refuses_to_start_the_stream():
+    reader = FakeReader()
+    booth = Booth(_settings(True), reader, runbook())
+    booth.tick()
+    booth.faults[0].action = Action(kind="start_stream", summary="Start streaming")
+    result = booth.handle_action(
+        {"version": "1.0", "action": {"name": "apply_fix", "context": {"faultId": "house_mix_muted"}}}
+    )
+    assert result["ok"] is False
+    assert "service PC" in result["message"]
+    assert reader.calls == []

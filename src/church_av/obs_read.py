@@ -93,6 +93,20 @@ class ObsReader:
             raw=True,
         )
 
+    def set_input_volume_db(self, name: str, volume_db: float) -> None:
+        self._request_client().send(
+            "SetInputVolume",
+            {"inputName": name, "inputVolumeDb": volume_db},
+            raw=True,
+        )
+
+    def set_program_scene(self, name: str) -> None:
+        self._request_client().send(
+            "SetCurrentProgramScene",
+            {"sceneName": name},
+            raw=True,
+        )
+
     def _request_client(self):
         if self._client is None:
             import obsws_python as obs

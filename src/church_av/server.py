@@ -12,6 +12,7 @@ from church_av.config import Settings
 from church_av.detector import Detector
 from church_av.models import Fault, Snapshot
 from church_av.obs_read import ObsReader
+from church_av.policy import decide
 from church_av.runbook import Runbook, load_runbook
 
 
@@ -72,25 +73,34 @@ class Booth:
                 "ok": False,
                 "message": "Apply is off. This computer is watching only. Set ALLOW_APPLY=true to let a button change OBS.",
             }
+        with self._lock:
+            snapshot = self.snapshot
         try:
-            self._apply(fault)
+            summary = self._apply(fault, snapshot)
         except Exception as exc:
             message_text = str(exc).strip() or exc.__class__.__name__
             with self._lock:
                 self.last_action = message_text
             return {"ok": False, "message": message_text}
         with self._lock:
-            self.last_action = fault.action.summary
+            self.last_action = summary
         self.tick()
-        return {"ok": True, "message": fault.action.summary}
+        return {"ok": True, "message": summary}
 
-    def _apply(self, fault: Fault) -> None:
-        action = fault.action
-        if action is None or action.kind != "set_input_mute" or not action.input_name:
-            raise RuntimeError("This booth only applies an unmute of the house mix.")
-        if action.muted is not False:
-            raise RuntimeError("Muting the house mix from here is disabled.")
-        self.reader.set_input_mute(action.input_name, False)
+    def _apply(self, fault: Fault, snapshot: Snapshot) -> str:
+        decision = decide(fault.action, snapshot, self.runbook, confirmed=True)
+        if not decision.allowed or decision.action is None:
+            raise RuntimeError(decision.reason)
+        action = decision.action
+        if action.kind == "set_input_mute" and action.input_name is not None:
+            self.reader.set_input_mute(action.input_name, False)
+        elif action.kind == "set_input_volume" and action.input_name is not None and action.volume_db is not None:
+            self.reader.set_input_volume_db(action.input_name, action.volume_db)
+        elif action.kind == "set_program_scene" and action.scene_name is not None:
+            self.reader.set_program_scene(action.scene_name)
+        else:
+            raise RuntimeError("That change is not available from the booth.")
+        return decision.reason
 
 
 def _fault_dict(fault: Fault) -> dict:
