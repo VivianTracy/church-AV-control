@@ -86,7 +86,7 @@ def test_runbook_matches_the_service_machine():
     assert book.expect_stream_live is False
 
 
-def test_graphic_surface_shows_the_stage_and_the_mixer_control():
+def test_graphic_surface_shows_the_scene_and_the_mixer_control():
     book = load_runbook(ROOT / "runbook" / "church.yaml")
     reading = snapshot(
         inputs=[InputReading(name="Audio Input Capture", muted=True, volume_db=-1.8)]
@@ -94,8 +94,10 @@ def test_graphic_surface_shows_the_stage_and_the_mixer_control():
     faults = Detector().detect(reading, runbook())
     surface = build_messages(reading, book, faults, allow_apply=False)[0]["createSurface"]
     by_id = {item["id"]: item for item in surface["components"]}
-    assert by_id["stage"]["component"] == "Row"
-    assert by_id["pane_0_label"]["text"] == "Slide PC"
+    assert "stage" not in by_id
+    assert "pane_0_label" not in by_id
+    assert by_id["scene_value"]["text"] == "2-Slide Only"
+    assert by_id["scene_detail"]["text"].startswith("Slide PC")
     assert by_id["fault_0_place"]["text"] == "OBS Audio Mixer"
     assert by_id["fault_0_control"]["text"] == "Audio Input Capture"
     assert by_id["fault_0_icon"]["name"] == "volumeMute"

@@ -371,21 +371,6 @@ PAGE = r"""<!DOCTYPE html>
   #mix_card[data-state="Open"] { box-shadow: inset 3px 0 0 #7dbe7a; }
   #mix_card[data-state="Muted"], #mix_card[data-state="Missing"] { box-shadow: inset 3px 0 0 #e06c5a; }
   svg.icon { width: 1.7rem; height: 1.7rem; display: block; }
-  #stage_heading { font-size: 1.15rem; letter-spacing: 0; text-transform: none; color: #f4efe6; margin: 0 0 0.4rem; }
-  #stage { position: relative; aspect-ratio: 16 / 9; min-height: 11rem; background: #0a0908;
-           border: 1px solid #3a332c; border-radius: 12px; padding: 0.45rem; gap: 0.35rem; }
-  .tally { position: absolute; z-index: 2; top: 0.85rem; left: 0.85rem; background: #e06c5a; color: #fff;
-           font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; padding: 0.12rem 0.4rem; }
-  #stage[data-connected="false"] .tally { background: #5a4034; }
-  #stage > article { position: relative; display: flex; align-items: flex-end; padding: 0.7rem;
-                     min-height: 0; color: #f4efe6; overflow: hidden; border-radius: 6px; }
-  #stage > article p { position: relative; z-index: 1; margin: 0; font-size: 1.2rem; font-weight: 650;
-                       text-shadow: 0 1px 2px #000; }
-  #stage .art { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #stage > article[data-source="Wall Cam"] { background: #243044; }
-  #stage > article[data-source="Slide PC"] { background: #3d3428; }
-  #stage > article[data-source="Mobile Cam"] { background: #24362c; }
-  #stage > article[data-source="Acer"] { background: #2c3034; }
   #meter { grid-column: 2; grid-row: 1 / span 4; margin: 0; flex-direction: column; align-items: center; gap: 0.3rem; }
   #meter_caption { font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: #b7aa98; }
   .strip { display: flex; align-items: flex-end; gap: 0.4rem; height: 6.8rem; }
@@ -448,7 +433,6 @@ PAGE = r"""<!DOCTYPE html>
   pre { white-space: pre-wrap; }
   @media (max-width: 720px) {
     #status { grid-template-columns: 1fr; }
-    #stage { min-height: 9rem; }
     article[id^="fault_"] > .row { flex-direction: column; }
     .mixer, .badge { width: auto; flex-basis: auto; flex-direction: row; justify-content: flex-start; }
     .mixer .track { height: 4.5rem; }
@@ -569,22 +553,6 @@ const SCENE_COLORS = {
   "11-Acer 70 + Slide 30": ["#2c3034", "#2c3034", "#3d3428"]
 };
 
-function stageArt(source) {
-  const pictures = {
-    "Wall Cam": '<rect width="320" height="180" fill="#1b2838"/><rect x="36" y="28" width="28" height="88" fill="#31445c"/><rect x="256" y="28" width="28" height="88" fill="#31445c"/><path d="M160 34v58M132 62h56" stroke="#f4efe6" stroke-width="7"/><rect x="104" y="112" width="112" height="26" fill="#5c4632"/><path d="M20 156h280" stroke="#8d8478" stroke-width="3"/>',
-    "Slide PC": '<rect width="320" height="180" fill="#2a241c"/><rect x="36" y="18" width="248" height="144" fill="#f4efe6"/><rect x="56" y="38" width="120" height="14" fill="#3d3428"/><rect x="56" y="68" width="200" height="6" fill="#c4b8a8"/><rect x="56" y="84" width="176" height="6" fill="#c4b8a8"/><rect x="56" y="100" width="150" height="6" fill="#c4b8a8"/>',
-    "Mobile Cam": '<rect width="320" height="180" fill="#1c2a22"/><rect x="124" y="10" width="72" height="160" rx="10" fill="#121815" stroke="#f4efe6" stroke-width="3"/><circle cx="160" cy="68" r="16" fill="#d5cbbd"/><path d="M136 132c6-22 42-22 48 0" fill="#d5cbbd"/>',
-    "Acer": '<rect width="320" height="180" fill="#22262a"/><rect x="28" y="16" width="264" height="132" fill="#141210" stroke="#8d8478" stroke-width="6"/><rect x="140" y="148" width="40" height="12" fill="#8d8478"/><rect x="112" y="160" width="96" height="6" fill="#8d8478"/>'
-  };
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 320 180");
-  svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
-  svg.classList.add("art");
-  svg.setAttribute("aria-hidden", "true");
-  svg.innerHTML = pictures[source] || '<rect width="320" height="180" fill="#1a1816"/><circle cx="160" cy="90" r="28" fill="none" stroke="#8d8478" stroke-width="4"/><path d="M142 108l36-36" stroke="#8d8478" stroke-width="4"/>';
-  return svg;
-}
-
 function swatch(colors) {
   const el = document.createElement("div");
   el.className = "swatch";
@@ -659,13 +627,6 @@ function renderNode(id, byId, data) {
       el.insertBefore(cluster, el.firstChild);
       el.appendChild(readout(data));
     }
-    if (id === "stage") {
-      el.dataset.connected = data && data.connected === false ? "false" : "true";
-      const tally = document.createElement("div");
-      tally.className = "tally";
-      tally.textContent = data && data.connected === false ? "OFF" : "PGM";
-      el.appendChild(tally);
-    }
     if (id.endsWith("_fader") || id.endsWith("_badge")) {
       const speaker = document.createElement("div");
       speaker.className = "speaker";
@@ -690,10 +651,6 @@ function renderNode(id, byId, data) {
     if (node.weight) el.style.flex = node.weight + " 1 0";
     el.appendChild(child);
     const label = textOf(byId, node.child);
-    if (id.startsWith("pane_")) {
-      el.dataset.source = label;
-      el.insertBefore(stageArt(label), el.firstChild);
-    }
     const colors = SCENE_COLORS[label];
     if (colors && (id === "scene_current" || /^scene_\d+$/.test(id))) el.insertBefore(swatch(colors), el.firstChild);
     if (id === "stream_card") el.dataset.state = textOf(byId, "stream_value");

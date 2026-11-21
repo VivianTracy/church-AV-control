@@ -15,21 +15,6 @@ _BOARD_DIAGRAM = {
 CATALOG_ID = "https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json"
 SURFACE_ID = "booth"
 
-# Pane weights match the scene names used on the service PC.
-_STAGE = {
-    "1-Stage Only": [("Wall Cam", 1)],
-    "2-Slide Only": [("Slide PC", 1)],
-    "3-Stage 50/Slide 50": [("Wall Cam", 1), ("Slide PC", 1)],
-    "4-Stage 100/Slide 30": [("Wall Cam", 3), ("Slide PC", 1)],
-    "5-Stage 30/Slide 70": [("Wall Cam", 1), ("Slide PC", 2)],
-    "6-Stage 30/Slide 100": [("Slide PC", 3), ("Wall Cam", 1)],
-    "7-Mobile Cam 50/Slide 50": [("Mobile Cam", 1), ("Slide PC", 1)],
-    "8-Mobile Cam Only": [("Mobile Cam", 1)],
-    "9-Studio (Wall Cam + Mobile Cam)": [("Wall Cam", 1), ("Mobile Cam", 1)],
-    "10-Acer Monitor": [("Acer", 1)],
-    "11-Acer 70 + Slide 30": [("Acer", 2), ("Slide PC", 1)],
-}
-
 
 def build_messages(
     snapshot: Snapshot,
@@ -40,10 +25,8 @@ def build_messages(
     asked: str = "",
 ) -> list[dict]:
     components: list[dict] = []
-    root_children = ["title", "stage_heading", "stage", "status"]
+    root_children = ["title", "status"]
     components.append(_text("title", runbook.church))
-    components.append(_text("stage_heading", snapshot.program_scene or "No scene"))
-    components.extend(_stage(snapshot))
     components.extend(_status(snapshot, runbook))
 
     if faults:
@@ -110,15 +93,6 @@ def _status(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
         _row("meter", ["meter_caption"]),
         _text("meter_caption", "X-USB meter", "caption"),
     ]
-
-
-def _stage(snapshot: Snapshot) -> list[dict]:
-    panes = _STAGE.get(snapshot.program_scene or "", [(snapshot.program_scene or "No scene", 1)])
-    components: list[dict] = [_row("stage", [f"pane_{index}" for index in range(len(panes))])]
-    for index, (label, weight) in enumerate(panes):
-        components.append(_card(f"pane_{index}", f"pane_{index}_label", weight))
-        components.append(_text(f"pane_{index}_label", label))
-    return components
 
 
 def _scene_strip(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
@@ -395,8 +369,5 @@ def _column(component_id: str, children: list[str]) -> dict:
     return {"id": component_id, "component": "Column", "children": children}
 
 
-def _card(component_id: str, child: str, weight: int | None = None) -> dict:
-    card = {"id": component_id, "component": "Card", "child": child}
-    if weight is not None:
-        card["weight"] = weight
-    return card
+def _card(component_id: str, child: str) -> dict:
+    return {"id": component_id, "component": "Card", "child": child}
