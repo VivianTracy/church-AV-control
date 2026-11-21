@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import asdict, dataclass
 
 from church_av.models import Fault, Snapshot
 from church_av.runbook import Runbook
 
+MODEL = "gemini-3.5-flash"
+
 INSTRUCTION = """
 You are the church stream booth assistant.
 Answer the question the operator asked.
-Use get_snapshot, get_runbook, or list_open_faults only when that question needs a live reading, a church name, or an open fault.
-Do not recite the runbook as the reply.
+The facts in the message are the only live readings and church names you have.
+Do not recite a general checklist unless the operator asked for one.
 Reply in two or three sentences a volunteer can follow from across the room.
-Reply in the language the operator wrote in. If they ask for Chinese, write the whole reply in Chinese.
+Reply in the language the operator wrote in. An English question gets an English reply. If they ask for Chinese, write the whole reply in Chinese.
 Name the OBS control, such as the Audio Mixer speaker for Audio Input Capture,
 or the Behringer X32 channel when the runbook names it.
 Do not invent a board channel name.
@@ -69,7 +70,7 @@ def build_agent(tools: list):
         return None
     return Agent(
         name="church_booth",
-        model="gemini-3.5-flash",
+        model=MODEL,
         description="Explains church stream readings and points to the control to adjust.",
         instruction=INSTRUCTION,
         tools=tools,
@@ -93,7 +94,7 @@ def explain(
         if completer is not None:
             reply = completer(_prompt(question, snapshot), tools)
         else:
-            reply = _ask_adk(tools, _prompt(question, snapshot))
+            reply = _ask_model(api_key, _prompt(question, snapshot), _facts(snapshot, runbook, faults))
     except Exception:
         if question:
             return Guide(_could_not_answer(question, snapshot), "detector")
@@ -192,18 +193,17 @@ def _health_check(snapshot: Snapshot, runbook: Runbook, chinese: bool = False) -
 def _prompt(question: str | None, snapshot: Snapshot) -> str:
     if question:
         asked = "The operator asked: " + question.strip() + " "
-        language = "Reply in the language of the question. If they ask for Chinese, write the whole reply in Chinese. "
+        language = "Reply in the language of the question. An English question gets an English reply. If they ask for Chinese, write the whole reply in Chinese. "
         if not snapshot.connected:
             return (
                 asked
-                + "Answer this question. The live OBS reading is unavailable, so say that in one sentence and do not invent a scene or a meter. "
-                + "Use get_runbook only for a fact this question needs. "
+                + "Answer this question from the facts below. The live OBS reading is unavailable, so say that in one sentence and do not invent a scene or a meter. "
                 + "Do not reply with a general pre-stream checklist unless they asked for one. "
                 + language
             )
         return (
             asked
-            + "Answer this question. Use a tool only for a fact this question needs. "
+            + "Answer this question from the facts below. "
             + language
             + "Reply in two or three sentences and name where to adjust."
         )
@@ -213,44 +213,52 @@ def _prompt(question: str | None, snapshot: Snapshot) -> str:
     )
 
 
-def _ask_adk(tools: list, prompt: str) -> str:
-    agent = build_agent(tools)
-    if agent is None:
-        raise RuntimeError("google-adk is not installed")
+def _facts(snapshot: Snapshot, runbook: Runbook, faults: list[Fault]) -> str:
+    mix = runbook.house_mix
+    parts = [
+        f"House mix in OBS: {mix.obs_name}, Windows device {mix.windows_device}, target {mix.target_db:.0f} dB.",
+        f"Mixer: {runbook.board_name}.",
+    ]
+    if snapshot.connected:
+        scene = snapshot.program_scene or "unknown"
+        stream = "live" if snapshot.streaming else "stopped"
+        parts.append(f"OBS is connected. Program scene {scene}. YouTube output {stream}.")
+        house = snapshot.input_named(mix.obs_name)
+        if house is None:
+            parts.append(f"{mix.obs_name} is missing from this reading.")
+        else:
+            state = "muted" if house.muted else "open"
+            level = f"{house.volume_db:.0f} dB" if house.volume_db is not None else "an unknown fader"
+            parts.append(f"{mix.obs_name} is {state} at {level}.")
+    else:
+        parts.append("OBS cannot be read. There is no live scene, meter, or YouTube status.")
+    if faults:
+        parts.append("Open faults: " + "; ".join(fault.title for fault in faults[:4]) + ".")
+    else:
+        parts.append("No open faults.")
+    return " ".join(parts)
 
-    async def _run() -> str:
-        from google.adk.runners import InMemoryRunner
-        from google.genai import types
 
-        runner = InMemoryRunner(agent=agent, app_name="church_av")
-        try:
-            session = await runner.session_service.create_session(
-                app_name=runner.app_name,
-                user_id="booth",
-            )
-            message = types.Content(role="user", parts=[types.Part(text=prompt)])
-            chunks: list[str] = []
-            async for event in runner.run_async(
-                user_id="booth",
-                session_id=session.id,
-                new_message=message,
-            ):
-                if hasattr(event, "is_final_response") and not event.is_final_response():
-                    continue
-                content = getattr(event, "content", None)
-                if content is None:
-                    continue
-                for part in getattr(content, "parts", None) or []:
-                    text = getattr(part, "text", None)
-                    if text:
-                        chunks.append(text)
-            return "".join(chunks).strip()
-        finally:
-            close = getattr(runner, "close", None)
-            if close is not None:
-                await close()
+def _ask_model(api_key: str, prompt: str, facts: str) -> str:
+    """One short model call. No tool round trip and no retry while Flash is busy."""
+    from google import genai
+    from google.genai import types
 
-    try:
-        return asyncio.run(asyncio.wait_for(_run(), timeout=30))
-    except TimeoutError as exc:
-        raise RuntimeError("The guide took too long") from exc
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=12000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=f"{prompt}\nFacts: {facts}",
+        config=types.GenerateContentConfig(
+            system_instruction=INSTRUCTION,
+            max_output_tokens=220,
+            temperature=0.2,
+            thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
+        ),
+    )
+    return (response.text or "").strip()

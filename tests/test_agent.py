@@ -141,6 +141,7 @@ def test_instruction_keeps_the_agent_from_driving_the_stream():
     assert "You cannot change OBS" in INSTRUCTION
     assert "above 0 dB" in INSTRUCTION
     assert "ask what the knob is called" in INSTRUCTION
+    assert "An English question gets an English reply." in INSTRUCTION
     assert "If they ask for Chinese, write the whole reply in Chinese." in INSTRUCTION
 
 
