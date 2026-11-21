@@ -447,7 +447,15 @@ PAGE = r"""<!DOCTYPE html>
                       border: 1px solid var(--line); border-radius: 10px; padding: 0.45rem 0.65rem; margin: 0; cursor: pointer; }
   button.setup-box.is-selected { border-color: var(--text); background: #1c1f26; }
   button.setup-box strong { display: block; font-size: 0.92rem; font-weight: 600; }
+  button.setup-box .kicker { display: block; color: var(--muted); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  button.setup-box .status { display: block; font-size: 1.15rem; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; margin-top: 0.1rem; }
+  button.setup-box[data-state="ok"] .status { color: var(--ok); }
+  button.setup-box[data-state="bad"] .status { color: var(--bad); }
+  button.setup-box[data-state="off"] .status { color: var(--muted); }
   button.setup-box span { display: block; color: var(--muted); font-size: 0.75rem; margin-top: 0.1rem; }
+  .level { display: block; height: 0.35rem; margin-top: 0.4rem; background: #2a2e36; border-radius: 99px; overflow: hidden; }
+  .level b { display: block; height: 100%; background: var(--ok); }
+  .level b.hot { background: var(--warn); }
   .setup-detail { margin: 0; padding: 0.75rem 0.85rem; background: var(--inset); border-radius: 10px; color: var(--text); font-size: 0.95rem; }
   .setup-arrow { color: #5c6370; font-size: 0.95rem; }
   .setup-aside { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.88rem; }
@@ -686,7 +694,7 @@ function renderNode(id, byId, data) {
     return el;
   }
   if (node.component === "X32Diagram") return x32Diagram(node);
-  if (node.component === "SetupDiagram") return setupDiagram(node);
+  if (node.component === "SetupDiagram") return setupDiagram(node, data);
   if (node.component === "Card") {
     const el = document.createElement("article");
     el.id = id;
@@ -724,7 +732,24 @@ function paintSelection(notes) {
   detail.textContent = notes[selectedBox] || "Select a box to read that step.";
 }
 
-function setupDiagram(node) {
+function levelMeter(data) {
+  const bar = document.createElement("i");
+  bar.className = "level";
+  const db = data ? data.meterDb : null;
+  const muted = Boolean(data && data.muted);
+  let fraction = 0;
+  if (!muted && typeof db === "number" && db > -90) {
+    const clamped = Math.max(-60, Math.min(0, db));
+    fraction = (clamped + 60) / 60;
+  }
+  const fill = document.createElement("b");
+  fill.style.width = (fraction * 100) + "%";
+  if (fraction > 0.85) fill.className = "hot";
+  bar.appendChild(fill);
+  return bar;
+}
+
+function setupDiagram(node, data) {
   const notes = setupNotes(node);
   if (selectedBox && !notes[selectedBox]) selectedBox = "";
   const el = document.createElement("div");
@@ -754,14 +779,28 @@ function setupDiagram(node) {
         box.className = "setup-box";
         box.dataset.boxId = item.id || "";
         if (item.id && item.id === selectedBox) box.classList.add("is-selected");
+        if (item.state) box.dataset.state = item.state;
+        if (item.kicker) {
+          const kicker = document.createElement("span");
+          kicker.className = "kicker";
+          kicker.textContent = item.kicker;
+          box.appendChild(kicker);
+        }
         const title = document.createElement("strong");
         title.textContent = item.title || "";
         box.appendChild(title);
+        if (item.status) {
+          const status = document.createElement("span");
+          status.className = "status";
+          status.textContent = item.status;
+          box.appendChild(status);
+        }
         if (item.detail) {
           const reading = document.createElement("span");
           reading.textContent = item.detail;
           box.appendChild(reading);
         }
+        if (item.meter) box.appendChild(levelMeter(data));
         box.addEventListener("click", () => {
           selectedBox = selectedBox === item.id ? "" : item.id;
           paintSelection(notes);

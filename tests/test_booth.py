@@ -96,8 +96,18 @@ def test_graphic_surface_shows_the_scene_and_the_mixer_control():
     by_id = {item["id"]: item for item in surface["components"]}
     assert "stage" not in by_id
     assert "pane_0_label" not in by_id
-    assert by_id["scene_value"]["text"] == "2-Slide Only"
-    assert by_id["scene_detail"]["text"].startswith("Slide PC")
+    assert "scene_card" not in by_id
+    diagram = by_id["setup_diagram"]
+    scene = next(box for stage in diagram["lanes"][1]["stages"] for box in stage if box["id"] == "scene")
+    audio = [box for stage in diagram["lanes"][0]["stages"] for box in stage]
+    obs = next(box for box in audio if box["id"] == "obs")
+    youtube = next(box for box in audio if box["id"] == "youtube")
+    assert scene["kicker"] == "On screen"
+    assert scene["title"] == "2-Slide Only"
+    assert scene["detail"].startswith("Slide PC")
+    assert obs["title"] == "Audio Mixer"
+    assert obs["status"] == "Muted"
+    assert youtube["status"] == "Stopped"
     assert by_id["fault_0_place"]["text"] == "OBS Audio Mixer"
     assert by_id["fault_0_control"]["text"] == "Audio Input Capture"
     assert by_id["fault_0_icon"]["name"] == "volumeMute"
@@ -199,7 +209,7 @@ def test_path_box_lists_only_channels_reaching_the_house_mix():
     assert "14 Moderator" not in audio
     assert "Main L/R" in audio
     assert "X-USB" in audio
-    assert "Audio Input Capture" in audio
+    assert "Audio Mixer" in audio
     assert "YouTube" in audio
     assert "Wall Cam" in picture
     assert "Slide PC" in picture

@@ -25,10 +25,8 @@ def build_messages(
     asked: str = "",
 ) -> list[dict]:
     components: list[dict] = []
-    root_children = ["title", "status"]
+    root_children = ["title", "path_card"]
     components.append(_text("title", runbook.church))
-    components.extend(_status(snapshot, runbook))
-    root_children.append("path_card")
     components.extend(_path_card(snapshot, runbook))
 
     if faults:
@@ -61,7 +59,7 @@ def build_messages(
     ]
 
 
-def _status(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
+def _scene_line(snapshot: Snapshot, runbook: Runbook) -> tuple[str, str]:
     scene = snapshot.program_scene or "No scene"
     note = runbook.scene_note(snapshot.program_scene)
     if not snapshot.connected:
@@ -70,31 +68,7 @@ def _status(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
         picture = note.picture
     else:
         picture = "Scene not in the runbook yet"
-    stream_value, stream_detail, stream_icon = _stream_copy(snapshot, runbook)
-    mix_value, mix_detail, mix_icon = _mix_copy(snapshot, runbook)
-    return [
-        _row("status", ["scene_card", "stream_card", "mix_card"]),
-        _card("scene_card", "scene_body"),
-        _column("scene_body", ["scene_icon", "scene_kicker", "scene_value", "scene_detail"]),
-        _icon("scene_icon", "camera"),
-        _text("scene_kicker", "On screen", "caption"),
-        _text("scene_value", scene),
-        _text("scene_detail", picture, "caption"),
-        _card("stream_card", "stream_body"),
-        _column("stream_body", ["stream_icon", "stream_kicker", "stream_value", "stream_detail"]),
-        _icon("stream_icon", stream_icon),
-        _text("stream_kicker", "YouTube", "caption"),
-        _text("stream_value", stream_value),
-        _text("stream_detail", stream_detail, "caption"),
-        _card("mix_card", "mix_body"),
-        _column("mix_body", ["mix_icon", "mix_kicker", "mix_value", "mix_detail", "meter"]),
-        _icon("mix_icon", mix_icon),
-        _text("mix_kicker", "Audio Mixer", "caption"),
-        _text("mix_value", mix_value),
-        _text("mix_detail", mix_detail, "caption"),
-        _row("meter", ["meter_caption"]),
-        _text("meter_caption", "X-USB meter", "caption"),
-    ]
+    return scene, picture
 
 
 def _scene_strip(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
@@ -152,14 +126,13 @@ def _guide_card(reply: str, asked: str, faults: list[Fault]) -> list[dict]:
 
 
 def _setup_diagram(snapshot: Snapshot, runbook: Runbook) -> dict:
-    """The path currently in use. Channel boxes are only the ones reaching the Audio Mixer."""
-    usb_detail = "sends Main" if (runbook.usb_source or "main") == "main" else f"sends {runbook.usb_source}"
+    """The path currently in use. Scene, YouTube, and Audio Mixer status sit on their boxes."""
     audio = [
         _active_channel_nodes(snapshot, runbook),
         [_mix_node(runbook)],
-        [_node("usb", "X-USB", usb_detail, f"The X-USB card {usb_detail.lower()} to the service PC.")],
+        [_node("usb", "X-USB", *_usb_copy(snapshot, runbook))],
         [_obs_node(snapshot, runbook)],
-        [_youtube_node(snapshot)],
+        [_youtube_node(snapshot, runbook)],
     ]
     return {
         "id": "setup_diagram",
@@ -172,8 +145,37 @@ def _setup_diagram(snapshot: Snapshot, runbook: Runbook) -> dict:
     }
 
 
-def _node(node_id: str, title: str, detail: str, note: str) -> dict:
-    return {"id": node_id, "title": title, "detail": detail, "note": note}
+def _node(
+    node_id: str,
+    title: str,
+    detail: str,
+    note: str,
+    *,
+    status: str = "",
+    state: str = "",
+    meter: bool = False,
+    kicker: str = "",
+) -> dict:
+    node = {"id": node_id, "title": title, "detail": detail, "note": note}
+    if kicker:
+        node["kicker"] = kicker
+    if status:
+        node["status"] = status
+    if state:
+        node["state"] = state
+    if meter:
+        node["meter"] = True
+    return node
+
+
+def _usb_copy(snapshot: Snapshot, runbook: Runbook) -> tuple[str, str]:
+    sent = "sends Main" if (runbook.usb_source or "main") == "main" else f"sends {runbook.usb_source}"
+    note = f"The X-USB card {sent.lower()} to the service PC."
+    board = snapshot.board
+    if board is None or not board.connected:
+        return sent, note
+    stage = next(item for item in describe_path(snapshot, runbook).stages if item.id == "usb")
+    return stage.reading, stage.detail or note
 
 
 def _active_channel_nodes(snapshot: Snapshot, runbook: Runbook) -> list[dict]:
@@ -223,7 +225,7 @@ def _mix_node(runbook: Runbook) -> dict:
     return _node(
         "mix",
         "Main L/R",
-        "Audio Mixer",
+        "to Audio Mixer",
         "Main L/R feeds the Audio Mixer. The channels above are the ones reaching it.",
     )
 
@@ -231,36 +233,46 @@ def _mix_node(runbook: Runbook) -> dict:
 def _obs_node(snapshot: Snapshot, runbook: Runbook) -> dict:
     name = runbook.house_mix.obs_name
     if not snapshot.connected:
-        return _node("obs", name, "service PC unread", "OBS cannot be read from here.")
+        return _node(
+            "obs",
+            "Audio Mixer",
+            "Waiting for the service PC",
+            "OBS cannot be read from here.",
+            status="Offline",
+            state="bad",
+        )
+    value, detail, _icon = _mix_copy(snapshot, runbook)
     house = snapshot.input_named(name)
-    if house is None:
-        return _node("obs", name, "missing", f"{name} is missing from this OBS reading.")
-    state = "muted" if house.muted else "open"
-    fader = "fader unread" if house.volume_db is None else f"fader {house.volume_db:.0f} dB"
-    if house.meter_db is None or house.meter_db <= -90:
-        meter = "meter quiet"
-    else:
-        meter = f"meter {house.meter_db:.0f} dB"
-    detail = f"{state} · {fader} · {meter}"
-    return _node("obs", name, detail, f"{name} is {detail}. This is the one combined X-USB feed.")
+    if house is not None and house.meter_db is not None and house.meter_db > -90:
+        detail = f"{detail} · {house.meter_db:.0f} dB"
+    state = "bad" if value in {"Muted", "Missing"} else "ok"
+    return _node(
+        "obs",
+        "Audio Mixer",
+        detail,
+        f"{name} is {value.lower()}. {detail}. This is the one combined X-USB feed.",
+        status=value,
+        state=state,
+        meter=house is not None,
+    )
 
 
-def _youtube_node(snapshot: Snapshot) -> dict:
-    if not snapshot.connected:
-        detail = "unread"
-    elif snapshot.streaming:
-        detail = "Live"
-    elif snapshot.reconnecting:
-        detail = "reconnecting"
-    else:
-        detail = "stopped"
-    return _node("youtube", "YouTube", detail, f"YouTube is {detail.lower()}.")
+def _youtube_node(snapshot: Snapshot, runbook: Runbook) -> dict:
+    value, detail, _icon = _stream_copy(snapshot, runbook)
+    state = "ok" if value == "Live" else "off" if value == "Stopped" else "bad"
+    return _node(
+        "youtube",
+        "YouTube",
+        detail,
+        f"YouTube is {value.lower()}. {detail}.",
+        status=value,
+        state=state,
+    )
 
 
 def _picture_stages(snapshot: Snapshot, runbook: Runbook) -> list[list[dict]]:
-    scene = snapshot.program_scene or "No scene"
-    note = runbook.scene_note(snapshot.program_scene)
-    text = f"{scene} {note.picture if note else ''}"
+    scene, picture = _scene_line(snapshot, runbook)
+    text = f"{scene} {picture}"
     sources = [source for source in runbook.sources if source.obs_name and source.obs_name in text]
     if not sources and "Acer" in text:
         sources = [source for source in runbook.sources if source.obs_name == "Display Capture"]
@@ -277,8 +289,7 @@ def _picture_stages(snapshot: Snapshot, runbook: Runbook) -> list[list[dict]]:
                 for source in sources
             ]
         )
-    picture = note.picture if note else ""
-    stages.append([_node("scene", scene, picture, picture or scene)])
+    stages.append([_node("scene", scene, picture, picture or scene, kicker="On screen")])
     return stages
 
 
@@ -497,14 +508,11 @@ def _mix_copy(snapshot: Snapshot, runbook: Runbook) -> tuple[str, str, str]:
     if house is None:
         return "Missing", device, "warning"
     if house.muted:
-        detail = f"Muted · {device}"
-        return "Muted", detail, "volumeMute"
+        return "Muted", device, "volumeMute"
     if house.volume_db is None:
         value, detail = "Open", device
     else:
         value, detail = "Open", f"Fader {house.volume_db:.0f} dB · {device}"
-    if snapshot.board is not None and snapshot.board.connected:
-        detail = f"{detail} · {describe_path(snapshot, runbook).summary()}"
     return value, detail, "volumeUp"
 
 

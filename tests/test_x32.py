@@ -204,14 +204,19 @@ def test_a_quiet_mic_is_normal_while_obs_still_has_level():
     assert "isn't reaching" not in report.conclusion
 
 
-def test_the_mix_card_shows_the_stages_when_osc_is_connected():
+def test_the_diagram_shows_the_stages_when_osc_is_connected():
     reading = snapshot()
     reading.board = _board(pulpit=-12, main=-10)
-    text = build_messages(reading, _sunday(), [], allow_apply=False)[0]["createSurface"]
-    detail = next(item["text"] for item in text["components"] if item["id"] == "mix_detail")
-    assert "Pulpit -12 dB" in detail
-    assert "USB -10 dB" in detail
-    assert "OBS -18 dB" in detail
+    surface = build_messages(reading, _sunday(), [], allow_apply=False)[0]["createSurface"]
+    diagram = next(item for item in surface["components"] if item["id"] == "setup_diagram")
+    boxes = [box for stage in diagram["lanes"][0]["stages"] for box in stage]
+    pulpit = next(box for box in boxes if "Pulpit" in box["title"])
+    usb = next(box for box in boxes if box["id"] == "usb")
+    obs = next(box for box in boxes if box["id"] == "obs")
+    assert "-12" in pulpit["detail"]
+    assert "-10" in usb["detail"]
+    assert obs["status"] == "Open"
+    assert "-18" in obs["detail"]
 
 
 def test_operator_mapping_writes_the_runbook_and_not_the_mixer(tmp_path):
